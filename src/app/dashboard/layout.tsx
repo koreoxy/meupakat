@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils/cn';
 import LevelUpModal from '@/components/features/LevelUpModal';
 import ConfettiCelebration from '@/components/ui/ConfettiCelebration';
+import MeupakatLogo from '@/components/ui/MeupakatLogo';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Home', icon: HomeIcon, id: 'nav-home' },
@@ -47,9 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         {/* Brand */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-[var(--color-hairline)] shrink-0">
-          <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--color-primary)] flex items-center justify-center text-[var(--color-on-primary)] font-black text-sm shrink-0">
-            M
-          </div>
+          <MeupakatLogo size={28} />
           <span className="text-[15px] font-semibold text-[var(--color-ink)] tracking-[-0.01em]">
             Meupakat
           </span>
@@ -111,9 +110,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <header className="h-16 border-b border-[var(--color-hairline)] px-6 flex items-center justify-between shrink-0 bg-[var(--color-canvas)]">
           {/* Mobile brand */}
           <div className="flex items-center gap-2 md:hidden">
-            <div className="w-7 h-7 rounded-[var(--radius-xs)] bg-[var(--color-primary)] flex items-center justify-center text-white font-black text-xs">
-              M
-            </div>
+            <MeupakatLogo size={24} />
             <span className="text-[15px] font-semibold text-[var(--color-ink)]">Meupakat</span>
           </div>
           {/* Page title slot — hidden mobile */}

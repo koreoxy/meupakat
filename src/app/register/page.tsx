@@ -8,6 +8,8 @@ import { useAppStore } from '@/hooks/useAppStore';
 import Button from '@/components/ui/Button';
 import type { UserLevel } from '@/types';
 import { registerWithEmail, loginWithGoogle } from '@/app/actions/auth';
+import MeupakatLogo from '@/components/ui/MeupakatLogo';
+import { Eye, EyeOff } from 'lucide-react';
 
 const LEVELS: { value: UserLevel; label: string; desc: string; emoji: string; color: string }[] = [
   { value: 'beginner',     label: 'Beginner',     desc: 'Percakapan sehari-hari & perkenalan dasar', emoji: '🌱', color: '#10b981' },
@@ -23,6 +25,7 @@ export default function RegisterPage() {
   const [fullName,       setFullName]       = useState('');
   const [email,          setEmail]          = useState('');
   const [password,       setPassword]       = useState('');
+  const [showPassword,   setShowPassword]   = useState(false);
   const [selectedLevel,  setSelectedLevel]  = useState<UserLevel>('beginner');
   const [isLoading,      setIsLoading]      = useState(false);
   const [error,          setError]          = useState('');
@@ -132,9 +135,7 @@ export default function RegisterPage() {
 
         {/* Logo */}
         <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-9 h-9 rounded-[var(--radius-sm)] bg-[var(--color-primary)] flex items-center justify-center font-black text-sm text-white shrink-0">
-            M
-          </div>
+          <MeupakatLogo size={28} />
           <span className="text-[18px] font-semibold text-[var(--color-ink)] tracking-[-0.01em]">
             Meupakat
           </span>
@@ -187,15 +188,24 @@ export default function RegisterPage() {
               </div>
               <div>
                 <label htmlFor="password" className={labelCls}>Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="Minimal 6 karakter"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={inputCls}
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    placeholder="Minimal 6 karakter"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-4 pr-10 py-3 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)] text-[var(--color-ink)] placeholder:text-[var(--color-ink-disabled)] text-[13px] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] transition-colors focus:outline-none flex items-center justify-center"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
 
               {error && (

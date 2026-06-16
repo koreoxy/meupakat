@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { useAppStore } from '@/hooks/useAppStore';
 import Button from '@/components/ui/Button';
 import { loginWithEmail, loginWithGoogle } from '@/app/actions/auth';
+import MeupakatLogo from '@/components/ui/MeupakatLogo';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +16,7 @@ export default function LoginPage() {
 
   const [email,     setEmail]     = useState('');
   const [password,  setPassword]  = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error,     setError]     = useState('');
 
@@ -70,9 +73,7 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-9 h-9 rounded-[var(--radius-sm)] bg-[var(--color-primary)] flex items-center justify-center font-black text-sm text-white shrink-0">
-            M
-          </div>
+          <MeupakatLogo size={28} />
           <span className="text-[18px] font-semibold text-[var(--color-ink)] tracking-[-0.01em]">
             Meupakat
           </span>
@@ -113,15 +114,24 @@ export default function LoginPage() {
             >
               Password
             </label>
-            <input
-              id="login-password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)] text-[var(--color-ink)] placeholder:text-[var(--color-ink-disabled)] text-[13px] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
-            />
+            <div className="relative">
+              <input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-4 pr-10 py-3 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)] text-[var(--color-ink)] placeholder:text-[var(--color-ink-disabled)] text-[13px] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-ink-muted)] hover:text-[var(--color-ink)] transition-colors focus:outline-none flex items-center justify-center"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           {error && (
