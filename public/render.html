@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <h1>Rendering PWA Icons...</h1>
+  <div id="status">Starting...</div>
+  <script>
+    const img = new Image();
+    img.src = '/icon.svg';
+    img.onload = () => {
+      // 1. 192x192
+      const c192 = document.createElement('canvas');
+      c192.width = 192;
+      c192.height = 192;
+      const ctx192 = c192.getContext('2d');
+      ctx192.drawImage(img, 0, 0, 192, 192);
+      const p192 = c192.toDataURL('image/png');
+
+      // 2. 512x512
+      const c512 = document.createElement('canvas');
+      c512.width = 512;
+      c512.height = 512;
+      const ctx512 = c512.getContext('2d');
+      ctx512.drawImage(img, 0, 0, 512, 512);
+      const p512 = c512.toDataURL('image/png');
+
+      // 3. 512x512 maskable (with dark background and padded icon)
+      const c512m = document.createElement('canvas');
+      c512m.width = 512;
+      c512m.height = 512;
+      const ctx512m = c512m.getContext('2d');
+      ctx512m.fillStyle = '#121314';
+      ctx512m.fillRect(0, 0, 512, 512);
+      // Pad by 15% on each side
+      const pad = 512 * 0.15;
+      const size = 512 - (pad * 2);
+      ctx512m.drawImage(img, pad, pad, size, size);
+      const p512m = c512m.toDataURL('image/png');
+
+      fetch('/api/save-icons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p192, p512, p512m })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          document.getElementById('status').innerText = 'Icons rendered and saved successfully!';
+        } else {
+          document.getElementById('status').innerText = 'Error: ' + data.error;
+        }
+      })
+      .catch(err => {
+        document.getElementById('status').innerText = 'Fetch error: ' + err.message;
+      });
+    };
+  </script>
+</body>
+</html>

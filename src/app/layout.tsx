@@ -4,6 +4,7 @@ import './globals.css';
 import { AppProvider } from '@/hooks/useAppStore';
 import { ToastProvider } from '@/components/ui/Toast';
 import { ThemeProvider } from '@/hooks/useTheme';
+import RegisterSW from '@/components/RegisterSW';
 
 export const metadata: Metadata = {
   title: 'Meupakat — Belajar Speaking English',
@@ -35,11 +36,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap"
         />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Meupakat" />
+        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
       <body className="min-h-dvh bg-[var(--color-canvas)] text-[var(--color-ink)]">
         <ToastProvider>
           <ThemeProvider>
             <AppProvider>
+              <RegisterSW />
               {children}
             </AppProvider>
           </ThemeProvider>
