@@ -27,6 +27,7 @@ export interface DailyProgress {
   userId: string;
   date: string;
   minutesSpoken: number;
+  secondsSpoken: number;
   isMissionCompleted: boolean;
 }
 

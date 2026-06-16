@@ -39,11 +39,11 @@ export default function MissionPage({ params }: PageProps) {
   const levelInfo = user ? getLevelInfoByXp(user.currentXp) : null;
 
   const handleComplete = useCallback(
-    (minutesSpoken: number) => {
-      const { didLevelUp, xpGained } = completeSession(minutesSpoken);
-      setResult({ xpGained, didLevelUp });
+    async (secondsSpoken: number, aiPerformanceScore: number) => {
+      const res = await completeSession(secondsSpoken, aiPerformanceScore);
+      setResult({ xpGained: res.xpGained, didLevelUp: res.didLevelUp });
       setIsDone(true);
-      showToast(`🎉 +${xpGained} XP earned! Great session!`, 'success', 4000);
+      showToast(`🎉 +${res.xpGained} XP earned! Great session!`, 'success', 4000);
     },
     [completeSession, showToast]
   );

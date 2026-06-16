@@ -20,17 +20,29 @@ export default function PushToTalkButton({
   onStop,
   className,
 }: PushToTalkButtonProps) {
+  const handleClick = () => {
+    if (disabled) return;
+    if (isRecording) {
+      onStop();
+    } else {
+      onStart();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      handleClick();
+    }
+  };
+
   return (
     <button
       id="push-to-talk-btn"
       disabled={disabled}
-      onMouseDown={onStart}
-      onMouseUp={onStop}
-      onTouchStart={(e) => { e.preventDefault(); onStart(); }}
-      onTouchEnd={(e) => { e.preventDefault(); onStop(); }}
-      onKeyDown={(e) => e.key === ' ' && !isRecording && onStart()}
-      onKeyUp={(e) => e.key === ' ' && onStop()}
-      aria-label={isRecording ? 'Recording… Release to stop' : 'Hold to speak'}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      aria-label={isRecording ? 'Recording… Click to stop' : 'Click to speak'}
       aria-pressed={isRecording}
       className={cn(
         'relative w-20 h-20 rounded-full',

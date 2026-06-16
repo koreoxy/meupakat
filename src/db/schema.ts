@@ -58,6 +58,7 @@ export const dailyProgress = pgTable('daily_progress', {
   /** ISO date-only string: 'yyyy-MM-dd' */
   date: text('date').notNull(),
   minutesSpoken: integer('minutes_spoken').default(0).notNull(),
+  secondsSpoken: integer('seconds_spoken').default(0).notNull(),
   isMissionCompleted: boolean('is_mission_completed').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });

@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils/cn';
 import type { Scenario, DynamicChatMessage, ChatAIResponse } from '@/types';
 import { useTTS, useSTT } from '@/hooks/useSpeechServices';
 import { useSmartTimer } from '@/hooks/useSmartTimer';
+import { useSilenceDetector } from '@/hooks/useSilenceDetector';
 import { useToast } from '@/components/ui/Toast';
 import PushToTalkButton from './PushToTalkButton';
 import VoiceWaveform from './VoiceWaveform';
@@ -14,7 +15,7 @@ import Button from '@/components/ui/Button';
 
 interface ConversationPlayerProps {
   scenario: Scenario;
-  onComplete: (minutesSpoken: number) => void;
+  onComplete: (secondsSpoken: number, aiPerformanceScore: number) => void;
 }
 
 interface ChatMessage {
@@ -38,35 +39,12 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
   const [isUserTurn,     setIsUserTurn]     = useState(false);
   const [isWaitingForAI, setIsWaitingForAI] = useState(false);
 
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [evaluationResult, setEvaluationResult] = useState<{ grammarScore: number; vocabularyScore: number; feedback: string } | null>(null);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const targetSeconds = scenario.durationMinutes * 60;
-  const timer = useSmartTimer({
-    targetSeconds,
-    onComplete: () => showToast('🎉 Daily target reached! Great job!', 'success', 5000),
-  });
-
-  const finishSessionRef = useRef<(() => void) | null>(null);
-
-  // Auto-scroll chat to bottom
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isWaitingForAI]);
-
-  // ── TTS ─────────────────────────────────────────────────────────────────────
-  const handleTTSStart = useCallback(() => { timer.startListening(); }, [timer]);
-  const handleTTSEnd   = useCallback(() => {
-    timer.stopListening();
-    if (userTurnCount >= MAX_USER_TURNS) {
-      finishSessionRef.current?.();
-    } else {
-      setIsUserTurn(true);
-    }
-  }, [timer, userTurnCount]);
-
-  const tts = useTTS(handleTTSStart, handleTTSEnd);
-
-  // ── STT ─────────────────────────────────────────────────────────────────────
+  // ── STT & Silence & Timer ───────────────────────────────────────────────────
   const handleSTTResult = useCallback(
     async (transcript: string) => {
       const speechText = transcript || '(no speech detected)';
@@ -112,10 +90,37 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
         setIsUserTurn(true);
       }
     },
-    [dynamicHistory, scenario, timer, showToast, tts]
+    [dynamicHistory, scenario, showToast] // Removed timer/tts to resolve circular dependencies (will be referenced inside callback body at runtime)
   );
 
   const stt = useSTT(handleSTTResult);
+
+  const isSilent = useSilenceDetector({ isRecording: stt.isRecording });
+
+  const targetSeconds = scenario.durationMinutes * 60;
+  const timer = useSmartTimer({
+    targetSeconds,
+    onComplete: () => showToast('🎉 Daily target reached! Great job!', 'success', 5000),
+    isSilent,
+  });
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isWaitingForAI]);
+
+  // ── TTS ─────────────────────────────────────────────────────────────────────
+  const handleTTSStart = useCallback(() => { timer.startListening(); }, [timer]);
+  const handleTTSEnd   = useCallback(() => {
+    timer.stopListening();
+    if (userTurnCount >= MAX_USER_TURNS) {
+      finishSessionRef.current?.();
+    } else {
+      setIsUserTurn(true);
+    }
+  }, [timer, userTurnCount]);
+
+  const tts = useTTS(handleTTSStart, handleTTSEnd);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const handleStart = useCallback(() => {
@@ -135,15 +140,51 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
     }
   }, [scenario, tts]);
 
-  const finishSession = useCallback(() => {
+  const finishSession = useCallback(async () => {
     tts.stop();
     timer.stopListening();
     timer.stopSpeaking();
-    setIsSessionDone(true);
-    const minutesSpoken = Math.max(1, Math.round(timer.elapsedSeconds / 60));
-    setTimeout(() => onComplete(minutesSpoken), 600);
-  }, [tts, timer, onComplete]);
+    setIsEvaluating(true);
 
+    try {
+      const formattedHistory = dynamicHistory.map(h => ({
+        role: h.role,
+        content: h.content
+      }));
+
+      const res = await fetch('/api/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: formattedHistory }),
+      });
+
+      if (!res.ok) throw new Error('Evaluation request failed');
+
+      const data = await res.json();
+      setEvaluationResult({
+        grammarScore: data.grammarScore ?? 10,
+        vocabularyScore: data.vocabularyScore ?? 10,
+        feedback: data.feedback || 'Sesi selesai dengan baik! Teruskan latihanmu.',
+      });
+    } catch (err) {
+      console.error('Error evaluating session:', err);
+      setEvaluationResult({
+        grammarScore: 10,
+        vocabularyScore: 10,
+        feedback: 'Sesi latihan selesai dengan baik! Teruskan latihan untuk hasil maksimal.',
+      });
+    } finally {
+      setIsEvaluating(false);
+    }
+  }, [tts, timer, dynamicHistory]);
+
+  const handleSubmitResults = useCallback(() => {
+    setIsSessionDone(true);
+    const totalScore = (evaluationResult?.grammarScore ?? 10) + (evaluationResult?.vocabularyScore ?? 10);
+    setTimeout(() => onComplete(timer.elapsedSeconds, totalScore), 600);
+  }, [onComplete, timer.elapsedSeconds, evaluationResult]);
+
+  const finishSessionRef = useRef<(() => void) | null>(null);
   useEffect(() => { finishSessionRef.current = finishSession; }, [finishSession]);
   useEffect(() => { if (stt.error) showToast(stt.error, 'warning', 5000); }, [stt.error, showToast]);
 
@@ -162,7 +203,72 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
   const turnProgress = Math.min(100, (userTurnCount / MAX_USER_TURNS) * 100);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-[var(--color-canvas)]">
+    <div className="flex-1 flex flex-col overflow-hidden bg-[var(--color-canvas)] relative">
+      {isEvaluating && (
+        <div className="absolute inset-0 z-50 bg-[var(--color-scrim)] backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-12 h-12 rounded-full border-4 border-[var(--color-primary)] border-t-transparent animate-spin mb-4" />
+          <h3 className="text-lg font-semibold text-[var(--color-ink)]">AI Evaluator sedang menilai...</h3>
+          <p className="text-[13px] text-[var(--color-ink-muted)] mt-1">Menganalisis tata bahasa dan pilihan kata Anda.</p>
+        </div>
+      )}
+
+      {evaluationResult && (
+        <div className="absolute inset-0 z-50 bg-[var(--color-canvas)] flex flex-col items-center justify-center p-6 overflow-y-auto">
+          <div className="w-full max-w-md bg-[var(--color-surface-card)] border border-[var(--color-hairline)] rounded-[var(--radius-xl)] p-6 shadow-2xl animate-scale-in">
+            <div className="text-center mb-6">
+              <span className="text-4xl">📊</span>
+              <h3 className="text-xl font-bold text-[var(--color-ink)] mt-2">Hasil Evaluasi AI</h3>
+              <p className="text-[12px] text-[var(--color-ink-muted)] mt-0.5">Sesi latihan berbicara Anda</p>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              {/* Grammar Score */}
+              <div>
+                <div className="flex justify-between text-[13px] font-semibold mb-1">
+                  <span className="text-[var(--color-ink-secondary)]">Tata Bahasa (Grammar)</span>
+                  <span className="text-[var(--color-ink)]">{evaluationResult.grammarScore} / 15</span>
+                </div>
+                <div className="h-2 rounded-full bg-[var(--color-surface-active)] overflow-hidden">
+                  <div 
+                    className="h-full bg-[var(--color-primary)] rounded-full transition-all duration-1000"
+                    style={{ width: `${(evaluationResult.grammarScore / 15) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Vocabulary Score */}
+              <div>
+                <div className="flex justify-between text-[13px] font-semibold mb-1">
+                  <span className="text-[var(--color-ink-secondary)]">Kosakata (Vocabulary)</span>
+                  <span className="text-[var(--color-ink)]">{evaluationResult.vocabularyScore} / 15</span>
+                </div>
+                <div className="h-2 rounded-full bg-[var(--color-surface-active)] overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
+                    style={{ width: `${(evaluationResult.vocabularyScore / 15) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Total Bonus */}
+              <div className="p-3 bg-[var(--color-surface-active)] rounded-[var(--radius-md)] flex items-center justify-between">
+                <span className="text-[12px] font-medium text-[var(--color-ink-secondary)]">Skor Bonus XP AI:</span>
+                <span className="text-sm font-bold text-[var(--color-primary)]">+{evaluationResult.grammarScore + evaluationResult.vocabularyScore} XP</span>
+              </div>
+
+              {/* Feedback */}
+              <div className="p-4 bg-[var(--color-chat-hint-bg)] border border-[var(--color-chat-hint-border)] rounded-[var(--radius-md)]">
+                <p className="text-[12px] font-semibold text-[var(--color-warning)] mb-1">💡 Umpan Balik AI:</p>
+                <p className="text-[12px] leading-relaxed text-[var(--color-ink-secondary)] italic font-medium">"{evaluationResult.feedback}"</p>
+              </div>
+            </div>
+
+            <Button variant="primary" size="lg" fullWidth onClick={handleSubmitResults}>
+              Kirim & Selesaikan Sesi
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── Top Bar ─────────────────────────────────────────────────── */}
       <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-[var(--color-hairline)] bg-[var(--color-surface-sidebar)] flex items-center justify-between gap-4">
@@ -226,16 +332,15 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
 
           {/* Avatar area */}
           <div
-            className="relative flex items-center justify-center shrink-0"
+            className="relative flex items-center justify-center shrink-0 h-[100px] lg:h-[clamp(160px,28vh,260px)]"
             style={{
-              height: 'clamp(160px, 28vh, 260px)',
               backgroundColor: 'var(--color-avatar-area-bg)',
             }}
           >
             {/* AI Avatar */}
             <div className="text-center">
               <div
-                className="text-5xl sm:text-7xl mb-2 transition-transform duration-300"
+                className="text-4xl lg:text-7xl mb-1 lg:mb-2 transition-transform duration-300"
                 style={{ filter: tts.isSpeaking ? 'drop-shadow(0 0 16px rgba(58,134,255,0.6))' : 'none' }}
               >
                 👩‍🏫
@@ -318,7 +423,7 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
           </div>
 
           {/* Live transcript */}
-          <div className="flex-1 flex flex-col p-4 overflow-hidden">
+          <div className="flex-1 lg:flex-1 flex flex-col p-4 overflow-hidden max-h-[190px] lg:max-h-none shrink-0 lg:shrink">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-[12px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-[0.06em]">
                 Live Transcript
@@ -341,7 +446,7 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
             >
               {stt.transcript ? stt.transcript : (
                 <span className="text-[var(--color-ink-muted)] italic font-normal">
-                  {isUserTurn ? 'Hold the mic button and speak…' : 'Waiting for your turn…'}
+                  {isUserTurn ? 'Click the mic button to speak…' : 'Waiting for your turn…'}
                 </span>
               )}
             </div>

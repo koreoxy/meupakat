@@ -73,7 +73,26 @@ export async function getUserStreak(): Promise<Streak | null> {
     .where(eq(streaks.userId, authUser.id))
     .limit(1);
 
-  if (result.length === 0) return null;
+  if (result.length === 0) {
+    const inserted = await db
+      .insert(streaks)
+      .values({
+        userId: authUser.id,
+        currentStreak: 0,
+        longestStreak: 0,
+      })
+      .returning();
+
+    if (inserted.length === 0) return null;
+    const row = inserted[0];
+    return {
+      id: row.id,
+      userId: row.userId,
+      currentStreak: row.currentStreak,
+      longestStreak: row.longestStreak,
+      lastActiveDate: row.lastActiveDate?.toISOString() ?? null,
+    };
+  }
 
   const row = result[0];
   return {
@@ -100,22 +119,23 @@ export interface CompleteSessionResult {
  * Simpan hasil sesi berbicara. Dipanggil dari ConversationPlayer setelah selesai.
  *
  * Alur:
- * 1. Upsert daily_progress (tambah minutesSpoken)
+ * 1. Upsert daily_progress (tambah secondsSpoken)
  * 2. Cek apakah target harian tercapai
- * 3. Jika ya → update streak
- * 4. Tambah XP ke user
+ * 3. Jika ya → update/increment streak, deteksi & reset jika bolong
+ * 4. Tambah XP ke user (Base 50 + Streak * 2 + AI Score)
  */
 export async function completeSession(
-  minutesSpoken: number
+  secondsSpoken: number,
+  aiPerformanceScore: number
 ): Promise<CompleteSessionResult> {
   const authUser = await getCurrentAuthUser();
   if (!authUser) {
     return { success: false, xpGained: 0, didLevelUp: false, isMissionCompleted: false, newStreak: 0, error: 'Not authenticated.' };
   }
 
-  // Ambil data user (butuh level dan daily target)
+  // Ambil data user (butuh daily target)
   const userRows = await db
-    .select({ dailyTargetMinutes: users.dailyTargetMinutes, currentLevel: users.currentLevel })
+    .select({ dailyTargetMinutes: users.dailyTargetMinutes })
     .from(users)
     .where(eq(users.id, authUser.id))
     .limit(1);
@@ -124,7 +144,8 @@ export async function completeSession(
     return { success: false, xpGained: 0, didLevelUp: false, isMissionCompleted: false, newStreak: 0, error: 'User not found.' };
   }
 
-  const { dailyTargetMinutes, currentLevel } = userRows[0];
+  const { dailyTargetMinutes } = userRows[0];
+  const targetSeconds = dailyTargetMinutes * 60;
   const today = format(new Date(), 'yyyy-MM-dd');
 
   // ─── 1. Upsert daily progress ───────────────────────────────────────────────
@@ -139,72 +160,99 @@ export async function completeSession(
     )
     .limit(1);
 
-  let totalMinutes: number;
-  let isMissionCompleted: boolean;
+  let totalSeconds = 0;
+  let isMissionCompleted = false;
 
   if (existing.length > 0) {
-    totalMinutes = existing[0].minutesSpoken + minutesSpoken;
-    isMissionCompleted = totalMinutes >= dailyTargetMinutes;
+    totalSeconds = existing[0].secondsSpoken + secondsSpoken;
+    isMissionCompleted = totalSeconds >= targetSeconds;
 
     await db
       .update(dailyProgress)
       .set({
-        minutesSpoken: totalMinutes,
+        secondsSpoken: totalSeconds,
+        minutesSpoken: Math.floor(totalSeconds / 60),
         isMissionCompleted,
       })
       .where(eq(dailyProgress.id, existing[0].id));
   } else {
-    totalMinutes = minutesSpoken;
-    isMissionCompleted = totalMinutes >= dailyTargetMinutes;
+    totalSeconds = secondsSpoken;
+    isMissionCompleted = totalSeconds >= targetSeconds;
 
     await db.insert(dailyProgress).values({
       userId: authUser.id,
       date: today,
-      minutesSpoken: totalMinutes,
+      secondsSpoken: totalSeconds,
+      minutesSpoken: Math.floor(totalSeconds / 60),
       isMissionCompleted,
     });
   }
 
-  // ─── 2. Update streak jika mission selesai ──────────────────────────────────
-  let newStreak = 0;
+  // ─── 2. Fetch/Reset/Update streak ───────────────────────────────────────────
+  let currentStreakVal = 0;
 
-  if (isMissionCompleted) {
-    const streakRows = await db
-      .select()
-      .from(streaks)
-      .where(eq(streaks.userId, authUser.id))
-      .limit(1);
+  let streakRows = await db
+    .select()
+    .from(streaks)
+    .where(eq(streaks.userId, authUser.id))
+    .limit(1);
 
-    if (streakRows.length > 0) {
-      const streak = streakRows[0];
-      const lastActive = streak.lastActiveDate;
+  if (streakRows.length === 0) {
+    const inserted = await db
+      .insert(streaks)
+      .values({
+        userId: authUser.id,
+        currentStreak: 0,
+        longestStreak: 0,
+      })
+      .returning();
+    streakRows = inserted;
+  }
 
-      // Sudah dihitung hari ini
-      const alreadyCountedToday =
-        lastActive && isToday(lastActive);
+  if (streakRows.length > 0) {
+    const streak = streakRows[0];
+    const lastActive = streak.lastActiveDate;
+
+    // Check if streak was broken (last active date was before yesterday)
+    const isStreakBroken = lastActive && !isToday(lastActive) && !isYesterday(lastActive);
+    let currentStreakTemp = isStreakBroken ? 0 : streak.currentStreak;
+
+    // Update streak if mission completed today
+    if (isMissionCompleted) {
+      const alreadyCountedToday = lastActive && isToday(lastActive);
 
       if (!alreadyCountedToday) {
         const wasYesterday = lastActive ? isYesterday(lastActive) : false;
-        const newCurrentStreak = wasYesterday ? streak.currentStreak + 1 : 1;
-        const newLongest = Math.max(streak.longestStreak, newCurrentStreak);
-        newStreak = newCurrentStreak;
+        currentStreakVal = wasYesterday ? currentStreakTemp + 1 : 1;
+        const newLongest = Math.max(streak.longestStreak, currentStreakVal);
 
         await db
           .update(streaks)
           .set({
-            currentStreak: newCurrentStreak,
+            currentStreak: currentStreakVal,
             longestStreak: newLongest,
             lastActiveDate: new Date(),
           })
           .where(eq(streaks.id, streak.id));
       } else {
-        newStreak = streak.currentStreak;
+        currentStreakVal = currentStreakTemp;
       }
+    } else {
+      // If mission not completed today, but streak broken, save the reset state
+      if (isStreakBroken) {
+        await db
+          .update(streaks)
+          .set({
+            currentStreak: 0,
+          })
+          .where(eq(streaks.id, streak.id));
+      }
+      currentStreakVal = currentStreakTemp;
     }
   }
 
   // ─── 3. Tambah XP ──────────────────────────────────────────────────────────
-  const xpGained = calculateSessionXp(currentLevel as UserLevel, minutesSpoken);
+  const xpGained = calculateSessionXp(currentStreakVal, aiPerformanceScore);
   const xpResult = await addXp(xpGained);
 
   revalidatePath('/dashboard');
@@ -215,7 +263,7 @@ export async function completeSession(
     xpGained,
     didLevelUp: xpResult.didLevelUp,
     isMissionCompleted,
-    newStreak,
+    newStreak: currentStreakVal,
   };
 }
 
@@ -226,6 +274,7 @@ function mapDbProgress(row: {
   userId: string;
   date: string;
   minutesSpoken: number;
+  secondsSpoken: number;
   isMissionCompleted: boolean;
   createdAt: Date;
 }): DailyProgress {
@@ -234,6 +283,7 @@ function mapDbProgress(row: {
     userId: row.userId,
     date: row.createdAt.toISOString(),
     minutesSpoken: row.minutesSpoken,
+    secondsSpoken: row.secondsSpoken,
     isMissionCompleted: row.isMissionCompleted,
   };
 }

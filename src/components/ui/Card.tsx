@@ -10,17 +10,17 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 
 const variantStyles: Record<string, string> = {
   default:
-    'bg-[var(--color-surface-card)] border border-[var(--color-hairline)] rounded-[var(--radius-lg)]',
+    'bg-[var(--color-surface-card)] border-y sm:border border-[var(--color-hairline)] border-x-0 sm:border-x rounded-none sm:rounded-[var(--radius-lg)]',
   feature:
-    'bg-[var(--color-surface-card)] border border-[var(--color-hairline)] rounded-[var(--radius-xl)]',
+    'bg-[var(--color-surface-card)] border-y sm:border border-[var(--color-hairline)] border-x-0 sm:border-x rounded-none sm:rounded-[var(--radius-xl)]',
   animation:
-    'bg-[var(--color-surface-card)] border border-[var(--color-hairline)] rounded-[var(--radius-lg)] hover:border-[var(--color-primary)] hover:ring-1 hover:ring-[var(--color-primary)] transition-all duration-200 cursor-pointer',
+    'bg-[var(--color-surface-card)] border-y sm:border border-[var(--color-hairline)] border-x-0 sm:border-x rounded-none sm:rounded-[var(--radius-lg)] hover:border-[var(--color-primary)] hover:ring-1 hover:ring-[var(--color-primary)] transition-all duration-200 cursor-pointer',
   bordered:
-    'bg-transparent border border-[var(--color-hairline)] rounded-[var(--radius-md)]',
+    'bg-transparent border-y sm:border border-[var(--color-hairline)] border-x-0 sm:border-x rounded-none sm:rounded-[var(--radius-md)]',
   glass:
-    'bg-[var(--color-surface-modal)] border border-[var(--color-hairline)] rounded-[var(--radius-xl)]',
+    'bg-[var(--color-surface-modal)] border-y sm:border border-[var(--color-hairline)] border-x-0 sm:border-x rounded-none sm:rounded-[var(--radius-xl)]',
   surface:
-    'bg-[var(--color-surface-active)] rounded-[var(--radius-md)]',
+    'bg-[var(--color-surface-active)] rounded-none sm:rounded-[var(--radius-md)]',
 };
 
 const paddingStyles: Record<string, string> = {

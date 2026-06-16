@@ -168,6 +168,7 @@ export function upsertTodayProgress(
     const updated: DailyProgress = {
       ...all[existingIdx],
       minutesSpoken: newMinutes,
+      secondsSpoken: (all[existingIdx].secondsSpoken ?? 0) + (minutesToAdd * 60),
       isMissionCompleted: newMinutes >= targetMinutes,
     };
     all[existingIdx] = updated;
@@ -180,6 +181,7 @@ export function upsertTodayProgress(
     userId,
     date: new Date().toISOString(),
     minutesSpoken: minutesToAdd,
+    secondsSpoken: minutesToAdd * 60,
     isMissionCompleted: minutesToAdd >= targetMinutes,
   };
   all.push(newEntry);

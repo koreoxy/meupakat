@@ -33,6 +33,7 @@ interface AppState {
   weeklyProgress: DailyProgress[];
   isLoading: boolean;
   didLevelUp: boolean;
+  justCompletedMission: boolean;
 }
 
 type Action =
@@ -42,6 +43,7 @@ type Action =
   | { type: 'SET_WEEKLY_PROGRESS'; payload: DailyProgress[] }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_LEVEL_UP'; payload: boolean }
+  | { type: 'SET_JUST_COMPLETED_MISSION'; payload: boolean }
   | { type: 'LOGOUT' };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -58,6 +60,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, isLoading: action.payload };
     case 'SET_LEVEL_UP':
       return { ...state, didLevelUp: action.payload };
+    case 'SET_JUST_COMPLETED_MISSION':
+      return { ...state, justCompletedMission: action.payload };
     case 'LOGOUT':
       return {
         ...initialState,
@@ -75,6 +79,7 @@ const initialState: AppState = {
   weeklyProgress: [],
   isLoading: true,
   didLevelUp: false,
+  justCompletedMission: false,
 };
 
 // ─── Context ─────────────────────────────────────────────────────────────────
@@ -84,7 +89,7 @@ interface AppContextValue extends AppState {
   login: (email: string, fullName: string, level: User['currentLevel']) => void; // deprecated, auth is via pages now
   logout: () => Promise<void>;
   updateDailyTarget: (minutes: number) => Promise<void>;
-  completeSession: (minutesSpoken: number) => { didLevelUp: boolean; xpGained: number };
+  completeSession: (secondsSpoken: number, aiPerformanceScore: number) => Promise<{ didLevelUp: boolean; xpGained: number; isMissionCompleted: boolean; newStreak: number }>;
   dismissLevelUp: () => void;
 }
 
@@ -148,27 +153,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const completeSession = useCallback(
-    (minutesSpoken: number): { didLevelUp: boolean; xpGained: number } => {
-      // In a real app this is tricky to make purely synchronous if the DB update takes time, 
-      // but to preserve the existing UI behavior we will return a temporary mock object
-      // while we dispatch the server action asynchronously.
-      // Alternatively, we let the UI wait for the result.
-      // Since the interface requires a synchronous return (based on current usages), we will do this:
-
-      // Execute asynchronously
-      serverCompleteSession(minutesSpoken).then((res) => {
+    async (secondsSpoken: number, aiPerformanceScore: number): Promise<{ didLevelUp: boolean; xpGained: number; isMissionCompleted: boolean; newStreak: number }> => {
+      try {
+        const wasMissionDoneBefore = state.todayProgress?.isMissionCompleted ?? false;
+        const res = await serverCompleteSession(secondsSpoken, aiPerformanceScore);
         if (res.success) {
           if (res.didLevelUp) {
             dispatch({ type: 'SET_LEVEL_UP', payload: true });
           }
-          refreshData();
+          if (!wasMissionDoneBefore && res.isMissionCompleted) {
+            dispatch({ type: 'SET_JUST_COMPLETED_MISSION', payload: true });
+            setTimeout(() => {
+              dispatch({ type: 'SET_JUST_COMPLETED_MISSION', payload: false });
+            }, 6000);
+          }
+          await refreshData();
+          return {
+            didLevelUp: res.didLevelUp,
+            xpGained: res.xpGained,
+            isMissionCompleted: res.isMissionCompleted,
+            newStreak: res.newStreak,
+          };
         }
-      });
-
-      // Temporary return, the real UI updates when refreshData finishes
-      return { didLevelUp: false, xpGained: 0 }; 
+      } catch (err) {
+        console.error('Error completing session in store:', err);
+      }
+      return { didLevelUp: false, xpGained: 0, isMissionCompleted: false, newStreak: 0 };
     },
-    [refreshData]
+    [refreshData, state.todayProgress]
   );
 
   const dismissLevelUp = useCallback(() => {

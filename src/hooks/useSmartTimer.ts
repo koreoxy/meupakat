@@ -7,6 +7,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 interface UseSmartTimerOptions {
   targetSeconds: number;
   onComplete?: () => void;
+  isSilent?: boolean; // New option to pause active timer during silence
 }
 
 interface UseSmartTimerReturn {
@@ -24,12 +25,13 @@ interface UseSmartTimerReturn {
 
 /**
  * Smart Timer hook — only accumulates time when the user is
- * actively listening to AI audio OR actively recording their voice.
+ * actively listening to AI audio OR actively recording their voice (and not silent).
  * This prevents idle time from counting toward the daily target.
  */
 export function useSmartTimer({
   targetSeconds,
   onComplete,
+  isSilent = false,
 }: UseSmartTimerOptions): UseSmartTimerReturn {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isListening, setIsListening] = useState(false);
@@ -40,7 +42,7 @@ export function useSmartTimer({
   const elapsedRef = useRef(0);
   const completedRef = useRef(false);
 
-  const isActive = isListening || isSpeaking;
+  const isActive = isListening || (isSpeaking && !isSilent);
 
   // Tick every second when active
   useEffect(() => {

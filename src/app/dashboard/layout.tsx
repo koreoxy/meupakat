@@ -9,6 +9,7 @@ import { useAppStore } from '@/hooks/useAppStore';
 import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils/cn';
 import LevelUpModal from '@/components/features/LevelUpModal';
+import ConfettiCelebration from '@/components/ui/ConfettiCelebration';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Home', icon: HomeIcon, id: 'nav-home' },
@@ -191,6 +192,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {didLevelUp && (
         <LevelUpModal xp={user.currentXp} onClose={dismissLevelUp} />
       )}
+
+      {/* Confetti celebration */}
+      <ConfettiCelebration />
     </div>
   );
 }

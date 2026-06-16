@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { getCurrentAuthUser } from './auth';
 import { revalidatePath } from 'next/cache';
 import type { User, UserLevel } from '@/types';
+import { checkLevelUp, getLevelCategory } from '@/lib/utils/xp';
 
 // ─── Get User Profile ─────────────────────────────────────────────────────────
 
@@ -109,8 +110,8 @@ export async function addXp(amount: number): Promise<AddXpResult> {
   const newXp = currentXp + amount;
 
   // Tentukan level baru berdasarkan XP threshold
-  const newLevel = xpToLevel(newXp);
-  const didLevelUp = newLevel !== currentLevel;
+  const newLevel = getLevelCategory(newXp);
+  const didLevelUp = checkLevelUp(currentXp, newXp);
 
   await db
     .update(users)
@@ -123,12 +124,4 @@ export async function addXp(amount: number): Promise<AddXpResult> {
 
   revalidatePath('/dashboard');
   return { success: true, newXp, didLevelUp };
-}
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-function xpToLevel(xp: number): UserLevel {
-  if (xp >= 1500) return 'advanced';
-  if (xp >= 500) return 'intermediate';
-  return 'beginner';
 }
