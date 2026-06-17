@@ -34,58 +34,21 @@ You MUST return your evaluation strictly as a JSON object with three keys:
 
 DO NOT return anything other than the JSON object. Output ONLY valid JSON.`;
 
-    // ─── GEMINI DIRECT FETCH ──────────────────────────────────────────────────
-    if (process.env.GEMINI_API_KEY) {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`;
-      const geminiRes = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: `Evaluate this conversation:\n\n${conversationText}` }] }],
-          generationConfig: {
-            temperature: 0.3,
-            responseMimeType: 'application/json',
-          }
-        })
-      });
-
-      if (geminiRes.ok) {
-        const geminiData = await geminiRes.json();
-        const resultText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-        const resultJson = JSON.parse(resultText);
-        return NextResponse.json({
-          grammarScore: resultJson.grammarScore ?? 10,
-          vocabularyScore: resultJson.vocabularyScore ?? 10,
-          feedback: resultJson.feedback || 'Bagus sekali! Tetap semangat berlatih.',
-        });
-      }
-    }
-
-    // ─── OPENAI / GROQ ──────────────────────────────────────────────────────
-    let client: OpenAI;
-    let modelName: string;
-
-    if (process.env.GROQ_API_KEY) {
-      client = new OpenAI({
-        apiKey: process.env.GROQ_API_KEY,
-        baseURL: 'https://api.groq.com/openai/v1',
-      });
-      modelName = 'llama-3.3-70b-versatile';
-    } else if (process.env.OPENAI_API_KEY) {
-      client = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
-      modelName = 'gpt-4o-mini';
-    } else {
+    // ─── GROQ API CALL ────────────────────────────────────────────────────────
+    if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { error: 'No API key configured for evaluation' },
+        { error: 'GROQ_API_KEY is not configured for evaluation' },
         { status: 503 }
       );
     }
 
+    const client = new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: 'https://api.groq.com/openai/v1',
+    });
+
     const response = await client.chat.completions.create({
-      model: modelName,
+      model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Evaluate this conversation:\n\n${conversationText}` }

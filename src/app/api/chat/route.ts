@@ -7,10 +7,25 @@ import { eq } from 'drizzle-orm';
 import { getCurrentAuthUser } from '@/app/actions/auth';
 import { getDifficultyInstructions, getLevelInfoByXp } from '@/lib/utils/xp';
 
-// Create an OpenAI API client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
+
+// Helper to safely parse JSON response even if the model outputs markdown wrapper or extra text
+function parseRobustJson(text: string): any {
+  const cleanedText = text.trim();
+  try {
+    return JSON.parse(cleanedText);
+  } catch (e) {
+    // Try to extract JSON between { and }
+    const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch (innerError) {
+        console.error("Failed to parse extracted JSON block:", innerError);
+      }
+    }
+    throw e;
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -66,64 +81,61 @@ INSTRUCTIONS FOR OUTPUT FORMAT:
 
 DO NOT return anything other than the JSON object. Output ONLY valid JSON.`;
 
-    // ─── GEMINI DIRECT FETCH (To bypass OpenAI SDK compatibility bugs) ──────────
-    if (process.env.GEMINI_API_KEY) {
-      const geminiMessages = messages.map((m: any) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
+    // ─── HUGGING FACE SERVERLESS API ──────────────────────────────────────────
+    if (process.env.HUGGINGFACE_API_KEY && process.env.HUGGINGFACE_MODEL_ID) {
+      try {
+        const hfUrl = `https://api-inference.huggingface.co/models/${process.env.HUGGINGFACE_MODEL_ID}/v1/chat/completions`;
+        const apiMessages = [
+          { role: 'system', content: systemPrompt },
+          ...messages,
+        ];
 
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`;
-      const geminiRes = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: geminiMessages,
-          generationConfig: {
+        const response = await fetch(hfUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: process.env.HUGGINGFACE_MODEL_ID,
+            messages: apiMessages,
             temperature: 0.7,
-            responseMimeType: 'application/json',
-          }
-        })
-      });
+            max_tokens: 150,
+          }),
+        });
 
-      if (!geminiRes.ok) {
-        const errText = await geminiRes.text();
-        console.error('Gemini API Error:', errText);
-        throw new Error(`Gemini API Error: ${geminiRes.status}`);
+        if (response.ok) {
+          const resultJson = await response.json();
+          const resultText = resultJson.choices?.[0]?.message?.content || '{}';
+          const parsed = parseRobustJson(resultText);
+
+          return NextResponse.json({
+            reply: parsed.reply || "I didn't quite catch that. Could you repeat?",
+            hintForUser: parsed.hintForUser || "Could you repeat that?",
+          });
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn('Hugging Face API non-ok response:', response.status, errorData);
+          // Don't throw, let it fall through to Groq
+        }
+      } catch (hfError) {
+        console.error('Hugging Face API call failed, falling back to Groq:', hfError);
+        // Fall through to Groq
       }
-
-      const geminiData = await geminiRes.json();
-      const resultText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-      const resultJson = JSON.parse(resultText);
-
-      return NextResponse.json({
-        reply: resultJson.reply || "I didn't quite catch that. Could you repeat?",
-        hintForUser: resultJson.hintForUser || "Could you repeat that?",
-      });
     }
 
-    // ─── OPENAI / GROQ (Using OpenAI SDK) ──────────────────────────────────────
-    let client: OpenAI;
-    let modelName: string;
-
-    if (process.env.GROQ_API_KEY) {
-      client = new OpenAI({
-        apiKey: process.env.GROQ_API_KEY,
-        baseURL: 'https://api.groq.com/openai/v1',
-      });
-      modelName = 'llama-3.3-70b-versatile';
-    } else if (process.env.OPENAI_API_KEY) {
-      client = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
-      modelName = 'gpt-4o-mini';
-    } else {
+    // ─── GROQ API CALL (Fallback) ──────────────────────────────────────────────
+    if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { error: 'No API key configured' },
+        { error: 'No API key configured (Hugging Face failed or not set, and Groq is not configured)' },
         { status: 503 }
       );
     }
+
+    const client = new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: 'https://api.groq.com/openai/v1',
+    });
 
     const apiMessages = [
       { role: 'system', content: systemPrompt },
@@ -131,7 +143,7 @@ DO NOT return anything other than the JSON object. Output ONLY valid JSON.`;
     ];
 
     const response = await client.chat.completions.create({
-      model: modelName,
+      model: 'llama-3.3-70b-versatile',
       messages: apiMessages as any,
       temperature: 0.7,
       max_tokens: 150,
@@ -139,7 +151,7 @@ DO NOT return anything other than the JSON object. Output ONLY valid JSON.`;
     });
 
     const resultText = response.choices[0]?.message?.content || '{}';
-    const resultJson = JSON.parse(resultText);
+    const resultJson = parseRobustJson(resultText);
 
     return NextResponse.json({
       reply: resultJson.reply || "I didn't quite catch that. Could you repeat?",
