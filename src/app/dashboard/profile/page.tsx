@@ -28,9 +28,14 @@ export default function ProfilePage() {
 
   const handleSaveTarget = async () => {
     setIsSaving(true);
-    await new Promise((r) => setTimeout(r, 400));
-    updateDailyTarget(selectedTarget);
-    showToast(`✅ Daily target updated to ${selectedTarget} minutes!`, 'success');
+    const res = await updateDailyTarget(selectedTarget);
+    if (res.success) {
+      if (res.appliedImmediately) {
+        showToast(`✅ Target harian berhasil diubah menjadi ${selectedTarget} menit dan langsung berlaku hari ini!`, 'success');
+      } else {
+        showToast(`✅ Target harian diubah menjadi ${selectedTarget} menit. Karena misi hari ini sudah selesai, target baru akan mulai berlaku besok!`, 'success');
+      }
+    }
     setIsSaving(false);
   };
 
@@ -105,9 +110,9 @@ export default function ProfilePage() {
           <Card variant="default">
             <h3 className="text-[13px] font-semibold text-[var(--color-ink)] mb-0.5">Daily Target</h3>
             <p className="text-[11px] text-[var(--color-ink-muted)] mb-4">
-              How many minutes of speaking practice per day?
+              Berapa menit target latihan berbicara yang ingin Anda capai per hari?
             </p>
-            <div className="grid grid-cols-5 gap-2 mb-4">
+            <div className="grid grid-cols-5 gap-2 mb-3">
               {TARGET_OPTIONS.map((min) => (
                 <button
                   key={min}
@@ -124,6 +129,13 @@ export default function ProfilePage() {
                 </button>
               ))}
             </div>
+
+            <div className="text-[11px] text-[var(--color-ink-muted)] leading-relaxed space-y-1 bg-[var(--color-surface-active)] p-3 rounded-[var(--radius-sm)] border border-[var(--color-hairline)] mb-4">
+              <p className="font-semibold text-[var(--color-ink-secondary)]">💡 Catatan Target:</p>
+              <p>• Jika target hari ini belum tercapai, target baru akan langsung aktif hari ini.</p>
+              <p>• Jika target hari ini sudah tercapai, target baru Anda akan aktif mulai besok.</p>
+            </div>
+
             <Button
               id="save-target-btn"
               variant="primary"
@@ -133,7 +145,7 @@ export default function ProfilePage() {
               disabled={selectedTarget === user.dailyTargetMinutes}
               onClick={handleSaveTarget}
             >
-              {selectedTarget === user.dailyTargetMinutes ? 'Current target' : 'Save target'}
+              {selectedTarget === user.dailyTargetMinutes ? 'Target Saat Ini' : 'Simpan Target'}
             </Button>
           </Card>
 

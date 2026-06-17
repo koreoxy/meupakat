@@ -14,6 +14,7 @@ import type { User, Streak, DailyProgress } from '@/types';
 import {
   getUserProfile,
   updateDailyTarget as serverUpdateDailyTarget,
+  type UpdateTargetResult,
 } from '@/app/actions/user';
 import {
   getUserStreak,
@@ -23,6 +24,7 @@ import {
 } from '@/app/actions/progress';
 import { logout as serverLogout } from '@/app/actions/auth';
 import { useToast } from '@/components/ui/Toast';
+import { format } from 'date-fns';
 
 // ─── State & Actions ─────────────────────────────────────────────────────────
 
@@ -88,7 +90,7 @@ interface AppContextValue extends AppState {
   refreshData: () => Promise<void>;
   login: (email: string, fullName: string, level: User['currentLevel']) => void; // deprecated, auth is via pages now
   logout: () => Promise<void>;
-  updateDailyTarget: (minutes: number) => Promise<void>;
+  updateDailyTarget: (minutes: number) => Promise<UpdateTargetResult>;
   completeSession: (secondsSpoken: number, aiPerformanceScore: number) => Promise<{ didLevelUp: boolean; xpGained: number; isMissionCompleted: boolean; newStreak: number }>;
   dismissLevelUp: () => void;
 }
@@ -103,10 +105,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshData = useCallback(async () => {
     try {
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
       const [user, streak, today, weekly] = await Promise.all([
         getUserProfile(),
         getUserStreak(),
-        getTodayProgress(),
+        getTodayProgress(todayStr),
         getWeeklyProgress(),
       ]);
 
@@ -142,12 +145,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateDailyTarget = useCallback(
     async (minutes: number) => {
-      const res = await serverUpdateDailyTarget(minutes);
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const res = await serverUpdateDailyTarget(minutes, todayStr);
       if (res.success) {
         await refreshData();
       } else {
         showToast(res.error || 'Gagal mengubah target', 'error');
       }
+      return res;
     },
     [refreshData, showToast]
   );
@@ -156,7 +161,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (secondsSpoken: number, aiPerformanceScore: number): Promise<{ didLevelUp: boolean; xpGained: number; isMissionCompleted: boolean; newStreak: number }> => {
       try {
         const wasMissionDoneBefore = state.todayProgress?.isMissionCompleted ?? false;
-        const res = await serverCompleteSession(secondsSpoken, aiPerformanceScore);
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const res = await serverCompleteSession(secondsSpoken, aiPerformanceScore, todayStr);
         if (res.success) {
           if (res.didLevelUp) {
             dispatch({ type: 'SET_LEVEL_UP', payload: true });

@@ -228,6 +228,7 @@ export function useSTT(onResult?: (transcript: string) => void): UseSTTReturn {
   const [error, setError] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+  const accumulatedTextRef = useRef('');
 
   const startRecording = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -243,23 +244,37 @@ export function useSTT(onResult?: (transcript: string) => void): UseSTTReturn {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const recognition = new SpeechRecognitionAPI() as any;
     recognition.lang = 'en-US';
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    accumulatedTextRef.current = '';
+    setTranscript('');
 
     recognition.onstart = () => {
       setIsRecording(true);
       setError(null);
-      setTranscript('');
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
-      const result = event.results[event.results.length - 1];
-      if (result.isFinal) {
-        const text = result[0].transcript as string;
-        setTranscript(text);
-        onResult?.(text);
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcriptSegment = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcriptSegment + ' ';
+        } else {
+          interimTranscript += transcriptSegment;
+        }
       }
+
+      if (finalTranscript) {
+        accumulatedTextRef.current += finalTranscript;
+      }
+      
+      const currentFullText = (accumulatedTextRef.current + interimTranscript).trim();
+      setTranscript(currentFullText);
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -277,6 +292,8 @@ export function useSTT(onResult?: (transcript: string) => void): UseSTTReturn {
 
     recognition.onend = () => {
       setIsRecording(false);
+      const finalText = accumulatedTextRef.current.trim();
+      onResult?.(finalText);
     };
 
     recognitionRef.current = recognition;

@@ -31,6 +31,7 @@ export const users = pgTable('users', {
   currentLevel: userLevelEnum('current_level').default('beginner').notNull(),
   currentXp: integer('current_xp').default(0).notNull(),
   dailyTargetMinutes: integer('daily_target_minutes').default(10).notNull(),
+  nextDailyTargetMinutes: integer('next_daily_target_minutes').default(10).notNull(),
   avatarUrl: text('avatar_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

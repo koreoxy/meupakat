@@ -55,7 +55,7 @@ function ToastItem({
     <div
       className={cn(
         'flex items-start gap-3 px-4 py-3 rounded-2xl border backdrop-blur-sm',
-        'shadow-[0_4px_24px_rgba(0,0,0,0.4)] max-w-sm w-full',
+        'shadow-[0_4px_24px_rgba(0,0,0,0.4)] w-full',
         'transition-all duration-300 transform',
         colorMap[toast.type],
         visible
@@ -101,7 +101,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {/* Portal-like fixed container */}
       <div
-        className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 items-center"
+        className="fixed bottom-[88px] sm:bottom-24 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 items-center w-[calc(100vw-32px)] sm:max-w-sm"
         aria-live="polite"
         aria-atomic="true"
       >

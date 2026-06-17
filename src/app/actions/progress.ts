@@ -17,11 +17,50 @@ import type { DailyProgress, Streak, UserLevel } from '@/types';
 
 // ─── Get Today's Progress ─────────────────────────────────────────────────────
 
-export async function getTodayProgress(): Promise<DailyProgress | null> {
+export async function getTodayProgress(clientDate?: string): Promise<DailyProgress | null> {
   const authUser = await getCurrentAuthUser();
   if (!authUser) return null;
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = clientDate || format(new Date(), 'yyyy-MM-dd');
+
+  // Sync target harian jika hari baru terdeteksi
+  const userRows = await db
+    .select({
+      dailyTargetMinutes: users.dailyTargetMinutes,
+      nextDailyTargetMinutes: users.nextDailyTargetMinutes
+    })
+    .from(users)
+    .where(eq(users.id, authUser.id))
+    .limit(1);
+
+  if (userRows.length > 0) {
+    const user = userRows[0];
+    if (user.dailyTargetMinutes !== user.nextDailyTargetMinutes) {
+      // Periksa apakah record hari ini sudah lengkap targetnya
+      const todayProgressCheck = await db
+        .select()
+        .from(dailyProgress)
+        .where(
+          and(
+            eq(dailyProgress.userId, authUser.id),
+            eq(dailyProgress.date, today)
+          )
+        )
+        .limit(1);
+
+      const todayIsDone = todayProgressCheck.length > 0 && todayProgressCheck[0].isMissionCompleted;
+      if (!todayIsDone) {
+        await db
+          .update(users)
+          .set({
+            dailyTargetMinutes: user.nextDailyTargetMinutes,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, authUser.id));
+      }
+    }
+  }
+
   const result = await db
     .select()
     .from(dailyProgress)
@@ -126,7 +165,8 @@ export interface CompleteSessionResult {
  */
 export async function completeSession(
   secondsSpoken: number,
-  aiPerformanceScore: number
+  aiPerformanceScore: number,
+  clientDate?: string
 ): Promise<CompleteSessionResult> {
   const authUser = await getCurrentAuthUser();
   if (!authUser) {
@@ -146,7 +186,7 @@ export async function completeSession(
 
   const { dailyTargetMinutes } = userRows[0];
   const targetSeconds = dailyTargetMinutes * 60;
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = clientDate || format(new Date(), 'yyyy-MM-dd');
 
   // ─── 1. Upsert daily progress ───────────────────────────────────────────────
   const existing = await db

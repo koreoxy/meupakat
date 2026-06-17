@@ -3,8 +3,8 @@
 // Server Actions untuk manajemen data profil user
 
 import { db } from '@/db';
-import { users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { users, dailyProgress } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { getCurrentAuthUser } from './auth';
 import { revalidatePath } from 'next/cache';
 import type { User, UserLevel } from '@/types';
@@ -36,6 +36,7 @@ export async function getUserProfile(): Promise<User | null> {
     currentLevel: row.currentLevel as UserLevel,
     currentXp: row.currentXp,
     dailyTargetMinutes: row.dailyTargetMinutes,
+    nextDailyTargetMinutes: row.nextDailyTargetMinutes ?? row.dailyTargetMinutes,
     avatarUrl: row.avatarUrl ?? undefined,
     createdAt: row.createdAt.toISOString(),
   };
@@ -45,6 +46,7 @@ export async function getUserProfile(): Promise<User | null> {
 
 export interface UpdateTargetResult {
   success: boolean;
+  appliedImmediately: boolean;
   error?: string;
 }
 
@@ -53,29 +55,62 @@ export interface UpdateTargetResult {
  * Validasi: harus salah satu dari [5, 10, 15, 30, 60].
  */
 export async function updateDailyTarget(
-  minutes: number
+  minutes: number,
+  clientDate?: string
 ): Promise<UpdateTargetResult> {
   const validOptions = [5, 10, 15, 30, 60];
   if (!validOptions.includes(minutes)) {
-    return { success: false, error: 'Invalid target minutes value.' };
+    return { success: false, appliedImmediately: false, error: 'Invalid target minutes value.' };
   }
 
   const authUser = await getCurrentAuthUser();
   if (!authUser) {
-    return { success: false, error: 'Not authenticated.' };
+    return { success: false, appliedImmediately: false, error: 'Not authenticated.' };
   }
 
-  await db
-    .update(users)
-    .set({
-      dailyTargetMinutes: minutes,
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, authUser.id));
+  // Check if today's daily progress has already completed the daily goal
+  const today = clientDate || new Date().toISOString().split('T')[0];
+  const progressRows = await db
+    .select()
+    .from(dailyProgress)
+    .where(
+      and(
+        eq(dailyProgress.userId, authUser.id),
+        eq(dailyProgress.date, today)
+      )
+    )
+    .limit(1);
 
-  revalidatePath('/dashboard/profile');
-  revalidatePath('/dashboard');
-  return { success: true };
+  const isCompleted = progressRows.length > 0 && progressRows[0].isMissionCompleted;
+
+  if (isCompleted) {
+    // If today's mission is already complete, only update nextDailyTargetMinutes
+    await db
+      .update(users)
+      .set({
+        nextDailyTargetMinutes: minutes,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, authUser.id));
+
+    revalidatePath('/dashboard/profile');
+    revalidatePath('/dashboard');
+    return { success: true, appliedImmediately: false };
+  } else {
+    // If today's mission is not complete yet, apply immediately
+    await db
+      .update(users)
+      .set({
+        dailyTargetMinutes: minutes,
+        nextDailyTargetMinutes: minutes,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, authUser.id));
+
+    revalidatePath('/dashboard/profile');
+    revalidatePath('/dashboard');
+    return { success: true, appliedImmediately: true };
+  }
 }
 
 // ─── Add XP ───────────────────────────────────────────────────────────────────

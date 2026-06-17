@@ -52,7 +52,11 @@ export default function MissionPage({ params }: PageProps) {
     <div className="h-full flex flex-col bg-[var(--color-canvas)] text-[var(--color-ink)] font-sans overflow-hidden">
       <div className="flex-1 overflow-hidden flex flex-col">
         {!isDone ? (
-          <ConversationPlayer scenario={scenario} onComplete={handleComplete} />
+          <ConversationPlayer
+            scenario={scenario}
+            onComplete={handleComplete}
+            onCancel={() => router.push('/dashboard')}
+          />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center animate-scale-in">
 

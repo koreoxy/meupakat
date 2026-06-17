@@ -16,6 +16,7 @@ import Button from '@/components/ui/Button';
 interface ConversationPlayerProps {
   scenario: Scenario;
   onComplete: (secondsSpoken: number, aiPerformanceScore: number) => void;
+  onCancel?: () => void;
 }
 
 interface ChatMessage {
@@ -27,7 +28,7 @@ interface ChatMessage {
 
 const MAX_USER_TURNS = 5;
 
-export default function ConversationPlayer({ scenario, onComplete }: ConversationPlayerProps) {
+export default function ConversationPlayer({ scenario, onComplete, onCancel }: ConversationPlayerProps) {
   const { showToast } = useToast();
 
   const [messages,       setMessages]       = useState<ChatMessage[]>([]);
@@ -41,6 +42,8 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
 
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evaluationResult, setEvaluationResult] = useState<{ grammarScore: number; vocabularyScore: number; feedback: string } | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -95,7 +98,17 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
 
   const stt = useSTT(handleSTTResult);
 
-  const isSilent = useSilenceDetector({ isRecording: stt.isRecording });
+  const isSilent = useSilenceDetector({
+    isRecording: stt.isRecording,
+    silenceDurationMs: 2500,
+  });
+
+  // Auto-stop recording when silence is detected for more than silenceDurationMs
+  useEffect(() => {
+    if (isSilent && stt.isRecording) {
+      stt.stopRecording();
+    }
+  }, [isSilent, stt]);
 
   const targetSeconds = scenario.durationMinutes * 60;
   const timer = useSmartTimer({
@@ -144,6 +157,7 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
     tts.stop();
     timer.stopListening();
     timer.stopSpeaking();
+    stt.stopRecording();
     setIsEvaluating(true);
 
     try {
@@ -176,13 +190,15 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
     } finally {
       setIsEvaluating(false);
     }
-  }, [tts, timer, dynamicHistory]);
+  }, [tts, timer, stt, dynamicHistory]);
 
   const handleSubmitResults = useCallback(() => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setIsSessionDone(true);
     const totalScore = (evaluationResult?.grammarScore ?? 10) + (evaluationResult?.vocabularyScore ?? 10);
     setTimeout(() => onComplete(timer.elapsedSeconds, totalScore), 600);
-  }, [onComplete, timer.elapsedSeconds, evaluationResult]);
+  }, [onComplete, timer.elapsedSeconds, evaluationResult, isSubmitting]);
 
   const finishSessionRef = useRef<(() => void) | null>(null);
   useEffect(() => { finishSessionRef.current = finishSession; }, [finishSession]);
@@ -198,12 +214,30 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
     }
   };
 
+  const handleEndSessionClick = () => {
+    setShowCancelConfirm(true);
+  };
+
+  const handleConfirmCancel = () => {
+    setShowCancelConfirm(false);
+    tts.stop();
+    timer.stopListening();
+    timer.stopSpeaking();
+    stt.stopRecording();
+    if (onCancel) {
+      onCancel();
+    } else {
+      window.location.href = '/dashboard';
+    }
+  };
+
   // Timer display
   const elapsed = `${Math.floor(timer.elapsedSeconds / 60)}:${(timer.elapsedSeconds % 60).toString().padStart(2, '0')}`;
   const turnProgress = Math.min(100, (userTurnCount / MAX_USER_TURNS) * 100);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-[var(--color-canvas)] relative">
+      {/* Evaluating Overlay */}
       {isEvaluating && (
         <div className="absolute inset-0 z-50 bg-[var(--color-scrim)] backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
           <div className="w-12 h-12 rounded-full border-4 border-[var(--color-primary)] border-t-transparent animate-spin mb-4" />
@@ -212,6 +246,7 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
         </div>
       )}
 
+      {/* Evaluation Results Overlay */}
       {evaluationResult && (
         <div className="absolute inset-0 z-50 bg-[var(--color-canvas)] flex flex-col items-center justify-center p-6 overflow-y-auto">
           <div className="w-full max-w-md bg-[var(--color-surface-card)] border border-[var(--color-hairline)] rounded-[var(--radius-xl)] p-6 shadow-2xl animate-scale-in">
@@ -263,299 +298,138 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
               </div>
             </div>
 
-            <Button variant="primary" size="lg" fullWidth onClick={handleSubmitResults}>
+            <Button variant="primary" size="lg" fullWidth onClick={handleSubmitResults} isLoading={isSubmitting}>
               Kirim & Selesaikan Sesi
             </Button>
           </div>
         </div>
       )}
 
-      {/* ── Top Bar ─────────────────────────────────────────────────── */}
-      <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-[var(--color-hairline)] bg-[var(--color-surface-sidebar)] flex items-center justify-between gap-4">
-        {/* Scenario info */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-base shrink-0"
-            style={{ backgroundColor: 'rgba(58,134,255,0.15)', border: '1px solid rgba(58,134,255,0.3)' }}
-          >
-            🎙️
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-[var(--color-ink)] truncate leading-tight">
-              {scenario.title}
+      {/* Cancel Confirmation Overlay */}
+      {showCancelConfirm && (
+        <div className="absolute inset-0 z-50 bg-[var(--color-scrim)] backdrop-blur-sm flex items-center justify-center p-6 text-center">
+          <div className="w-full max-w-sm bg-[var(--color-surface-modal)] border border-[var(--color-hairline)] rounded-[var(--radius-xl)] p-6 shadow-2xl animate-scale-in">
+            <span className="text-4xl">⚠️</span>
+            <h3 className="text-lg font-bold text-[var(--color-ink)] mt-3">Akhiri Sesi?</h3>
+            <p className="text-[13px] text-[var(--color-ink-muted)] mt-2">
+              Apakah Anda yakin ingin mengakhiri sesi lebih awal? Anda tidak akan mendapatkan XP reward jika keluar sekarang.
             </p>
-            <p className="text-[11px] text-[var(--color-ink-muted)] leading-tight hidden sm:block">
-              {scenario.durationMinutes}min · {scenario.level}
-            </p>
-          </div>
-        </div>
-
-        {/* Timer + Turn progress + End button */}
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Turn counter */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)]">
-            <div className="w-16 h-1.5 rounded-full bg-[var(--color-hairline)] overflow-hidden">
-              <div
-                className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
-                style={{ width: `${turnProgress}%` }}
-              />
-            </div>
-            <span className="text-[11px] font-medium text-[var(--color-ink-muted)] tabular-nums">
-              {userTurnCount}/{MAX_USER_TURNS}
-            </span>
-          </div>
-
-          {/* Elapsed time */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)]">
-            <span className="text-[11px] text-[var(--color-ink-muted)]">⏱</span>
-            <span className="text-[13px] font-bold text-[var(--color-ink)] tabular-nums">{elapsed}</span>
-          </div>
-
-          {/* End session */}
-          <button
-            id="end-session-btn"
-            onClick={finishSession}
-            title="End session"
-            className="flex items-center gap-1.5 h-9 px-3 rounded-[var(--radius-sm)] bg-[var(--color-error)] hover:opacity-90 text-white text-[12px] font-semibold transition-opacity"
-          >
-            <EndCallIcon className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">End</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Main content — responsive grid ──────────────────────────── */}
-      <div className="flex-1 overflow-hidden flex flex-col lg:flex-row gap-0">
-
-        {/* ── LEFT: Avatar + Controls + Transcript ── */}
-        <div className="flex flex-col lg:w-[45%] shrink-0 border-b lg:border-b-0 lg:border-r border-[var(--color-hairline)]">
-
-          {/* Avatar area */}
-          <div
-            className="relative flex items-center justify-center shrink-0 h-[100px] lg:h-[clamp(160px,28vh,260px)]"
-            style={{
-              backgroundColor: 'var(--color-avatar-area-bg)',
-            }}
-          >
-            {/* AI Avatar */}
-            <div className="text-center">
-              <div
-                className="text-4xl lg:text-7xl mb-1 lg:mb-2 transition-transform duration-300"
-                style={{ filter: tts.isSpeaking ? 'drop-shadow(0 0 16px rgba(58,134,255,0.6))' : 'none' }}
-              >
-                👩‍🏫
-              </div>
-              {tts.isSpeaking && (
-                <div className="flex justify-center gap-1">
-                  {[0, 1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="w-1 rounded-full bg-[var(--color-primary)]"
-                      style={{
-                        height: '12px',
-                        animation: `waveBar 0.5s ease-in-out ${i * 0.1}s infinite alternate`,
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Status badge */}
-            <div className="absolute top-3 left-3">
-              <div
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-full)] text-[11px] font-semibold',
-                  isWaitingForAI
-                    ? 'bg-[var(--color-warning)]/15 text-[var(--color-warning)] border border-[var(--color-warning)]/30'
-                    : tts.isSpeaking
-                    ? 'bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30'
-                    : isUserTurn
-                    ? 'bg-[var(--color-success)]/15 text-[var(--color-success)] border border-[var(--color-success)]/30'
-                    : 'bg-[var(--color-surface-card)] text-[var(--color-ink-muted)] border border-[var(--color-hairline)]'
-                )}
-              >
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ backgroundColor: isWaitingForAI ? '#f59e0b' : tts.isSpeaking ? '#3a86ff' : isUserTurn ? '#10b981' : '#6b7280' }}
-                />
-                {isWaitingForAI ? 'AI Thinking…'
-                  : tts.isSpeaking ? 'AI Speaking'
-                  : isUserTurn ? 'Your Turn'
-                  : 'Waiting'}
-              </div>
-            </div>
-
-            {/* Skip AI speech */}
-            {tts.isSpeaking && (
-              <button
-                onClick={handleSkipVoice}
-                className="absolute bottom-3 right-3 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)] text-[11px] font-semibold text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors"
-              >
-                Skip ⏭
-              </button>
-            )}
-          </div>
-
-          {/* Controls row */}
-          <div className="shrink-0 px-4 py-4 flex items-center justify-center gap-4 border-b border-[var(--color-hairline)] bg-[var(--color-surface-card)]">
-            {/* Mute / video placeholder */}
-            <button className="w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--color-surface-active)] text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] border border-[var(--color-hairline)] transition-colors" title="Toggle camera">
-              <span className="text-lg">📹</span>
-            </button>
-
-            {/* Push-to-talk */}
-            {hasStarted ? (
-              <PushToTalkButton
-                isRecording={stt.isRecording}
-                disabled={!isUserTurn || isWaitingForAI}
-                onStart={() => { stt.startRecording(); timer.startSpeaking(); }}
-                onStop={() => { stt.stopRecording(); timer.stopSpeaking(); }}
-              />
-            ) : (
-              <Button variant="primary" size="lg" onClick={handleStart} id="start-session-btn">
-                🚀 Start Session
+            <div className="flex gap-3 mt-6">
+              <Button variant="secondary" size="md" fullWidth onClick={() => setShowCancelConfirm(false)}>
+                Batal
               </Button>
-            )}
-
-            <button className="w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--color-surface-active)] text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] border border-[var(--color-hairline)] transition-colors" title="Toggle audio">
-              <span className="text-lg">🎧</span>
-            </button>
+              <Button variant="danger" size="md" fullWidth onClick={handleConfirmCancel}>
+                Akhiri
+              </Button>
+            </div>
           </div>
+        </div>
+      )}
 
-          {/* Live transcript */}
-          <div className="flex-1 lg:flex-1 flex flex-col p-4 overflow-hidden max-h-[190px] lg:max-h-none shrink-0 lg:shrink">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-[12px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-[0.06em]">
-                Live Transcript
-              </h3>
-              {stt.isRecording && (
-                <span className="flex items-center gap-1.5 text-[11px] font-bold text-red-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                  Recording
-                </span>
+      {/* ── MOBILE VIEW (lg:hidden) ── */}
+      <div className="lg:hidden flex flex-col h-full overflow-hidden bg-[#0b141a] dark:bg-[#0b141a] bg-opacity-[0.98] relative">
+        {/* WhatsApp Header */}
+        <div className="shrink-0 px-3 py-2 bg-[#1f2c34] text-white flex items-center justify-between shadow-md z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#2a3942] flex items-center justify-center text-xl">
+              👩‍🏫
+            </div>
+            <div>
+              <h3 className="text-[14px] font-bold text-white leading-tight">AI Tutor ACE</h3>
+              {stt.isRecording ? (
+                <p className="text-[11px] text-red-400 flex items-center gap-1 font-bold animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                  Anda Berbicara...
+                </p>
+              ) : tts.isSpeaking ? (
+                <p className="text-[11px] text-emerald-400 flex items-center gap-1 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  AI Berbicara...
+                </p>
+              ) : isWaitingForAI ? (
+                <p className="text-[11px] text-amber-400 flex items-center gap-1 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  AI Berpikir...
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400 flex items-center gap-1 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                  Menunggu
+                </p>
               )}
             </div>
-            <div
-              className="flex-1 rounded-[var(--radius-md)] p-3 border text-[13px] leading-relaxed font-medium overflow-y-auto"
-              style={{
-                backgroundColor: 'var(--color-transcript-bg)',
-                borderColor: 'var(--color-hairline)',
-                color: 'var(--color-ink)',
-                minHeight: '80px',
-              }}
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <div className="bg-[#2a3942] px-2 py-1 rounded text-[12px] font-mono font-bold text-slate-300">
+              {elapsed}
+            </div>
+            <button
+              onClick={handleEndSessionClick}
+              className="w-10 h-10 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-white transition-colors"
+              title="End session"
             >
-              {stt.transcript ? stt.transcript : (
-                <span className="text-[var(--color-ink-muted)] italic font-normal">
-                  {isUserTurn ? 'Click the mic button to speak…' : 'Waiting for your turn…'}
-                </span>
-              )}
-            </div>
-
-            {/* Hint */}
-            {currentHint && (
-              <div
-                className="mt-3 rounded-[var(--radius-md)] px-3 py-2.5 text-[12px] leading-relaxed border"
-                style={{
-                  backgroundColor: 'var(--color-chat-hint-bg)',
-                  borderColor: 'var(--color-chat-hint-border)',
-                  color: 'var(--color-ink)',
-                }}
-              >
-                <span className="font-semibold text-[var(--color-warning)]">💡 Hint: </span>
-                {currentHint}
-              </div>
-            )}
+              <EndCallIcon className="w-5 h-5 rotate-[135deg]" />
+            </button>
           </div>
         </div>
 
-        {/* ── RIGHT: Chat ─────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {/* Chat header */}
-          <div className="shrink-0 px-4 py-3 border-b border-[var(--color-hairline)] flex items-center justify-between bg-[var(--color-surface-card)]">
-            <div>
-              <h3 className="text-[13px] font-semibold text-[var(--color-ink)]">Conversation</h3>
-              <p className="text-[11px] text-[var(--color-ink-muted)]">AI-powered chat</p>
-            </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-full)] bg-[var(--color-surface-active)] border border-[var(--color-hairline)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
-              <span className="text-[11px] font-semibold text-[var(--color-ink-secondary)]">Online</span>
-            </div>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {!hasStarted ? (
-              /* Pre-start state */
-              <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-8">
-                <div className="text-4xl">🎙️</div>
-                <div>
-                  <p className="text-[15px] font-semibold text-[var(--color-ink)] mb-1">Ready to Practice?</p>
-                  <p className="text-[12px] text-[var(--color-ink-muted)] max-w-[200px]">
-                    Press Start to begin your AI conversation session.
-                  </p>
-                </div>
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0b141a] relative">
+          {!hasStarted ? (
+            <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-8">
+              <div className="text-4xl animate-float">🎙️</div>
+              <div className="bg-[#1f2c34] p-5 rounded-xl border border-slate-700 max-w-xs mx-auto">
+                <p className="text-[15px] font-bold text-white mb-2">{scenario.title}</p>
+                <p className="text-[12px] text-slate-300 mb-4">
+                  Tekan mulai untuk memulai latihan percakapan bahasa Inggris Anda.
+                </p>
+                <Button variant="primary" size="md" fullWidth onClick={handleStart} id="start-session-btn-mobile">
+                  🚀 Mulai Sesi
+                </Button>
               </div>
-            ) : (
-              messages.map((msg) => (
+            </div>
+          ) : (
+            <>
+              {messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={cn(
-                    'flex gap-2.5 animate-fade-in-up',
-                    msg.speaker === 'user' ? 'flex-row-reverse' : 'flex-row'
+                    'flex animate-fade-in-up',
+                    msg.speaker === 'user' ? 'justify-end' : 'justify-start'
                   )}
                 >
-                  {/* Avatar */}
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0"
-                    style={{
-                      backgroundColor: msg.speaker === 'ai'
-                        ? 'var(--color-surface-active)'
-                        : 'var(--color-primary)',
-                    }}
-                  >
-                    {msg.speaker === 'ai' ? '🤖' : '👤'}
-                  </div>
-
-                  {/* Bubble */}
                   <div
                     className={cn(
-                      'px-3.5 py-2.5 rounded-[var(--radius-lg)] text-[13px] leading-relaxed max-w-[80%]',
-                      msg.speaker === 'ai' ? 'rounded-tl-[4px]' : 'rounded-tr-[4px]'
+                      'px-3 py-2 rounded-lg text-[13.5px] leading-relaxed max-w-[85%] relative shadow-sm',
+                      msg.speaker === 'user'
+                        ? 'bg-[#005c4b] text-white rounded-tr-none'
+                        : 'bg-[#202c33] text-slate-100 rounded-tl-none'
                     )}
-                    style={msg.speaker === 'ai' ? {
-                      backgroundColor: 'var(--color-chat-ai-bg)',
-                      border: '1px solid var(--color-chat-ai-border)',
-                      color: 'var(--color-chat-ai-text)',
-                    } : {
-                      backgroundColor: 'var(--color-chat-user-bg)',
-                      color: 'var(--color-chat-user-text)',
-                    }}
                   >
                     {msg.isTyping ? (
-                      <div className="flex items-center gap-1 py-0.5">
-                        {[0, 1, 2].map((i) => (
-                          <div
-                            key={i}
-                            className="w-1.5 h-1.5 rounded-full"
-                            style={{
-                              backgroundColor: 'var(--color-ink-muted)',
-                              animation: `waveBar 0.6s ease-in-out ${i * 0.15}s infinite alternate`,
-                            }}
-                          />
-                        ))}
-                      </div>
+                       <div className="flex items-center gap-1 py-1 px-2">
+                         {[0, 1, 2].map((i) => (
+                           <div
+                             key={i}
+                             className="w-1.5 h-1.5 rounded-full bg-slate-400"
+                             style={{
+                               animation: `waveBar 0.6s ease-in-out ${i * 0.15}s infinite alternate`,
+                             }}
+                           />
+                         ))}
+                       </div>
                     ) : (
                       <span>{msg.text}</span>
                     )}
-
-                    {/* Skip voice for last AI message */}
+                    
                     {msg.speaker === 'ai' && !msg.isTyping && tts.isSpeaking &&
                       msg.id === messages.filter((m) => m.speaker === 'ai').at(-1)?.id && (
-                      <div className="mt-2 flex items-center justify-between">
+                      <div className="mt-2 flex items-center justify-between border-t border-slate-700/50 pt-1.5 text-[10px]">
                         <VoiceWaveform isActive={true} type="ai" barCount={4} />
                         <button
                           onClick={handleSkipVoice}
-                          className="text-[10px] uppercase font-bold text-[var(--color-primary)] hover:underline tracking-wider"
+                          className="font-bold text-emerald-400 hover:underline tracking-wider uppercase"
                         >
                           Skip ⏭
                         </button>
@@ -563,29 +437,411 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
                     )}
                   </div>
                 </div>
-              ))
-            )}
+              ))}
+              
+              {/* Live Transcript User Bubble */}
+              {stt.isRecording && (
+                <div className="flex justify-end animate-fade-in-up">
+                  <div className="px-3 py-2 rounded-lg text-[13.5px] leading-relaxed max-w-[85%] bg-[#005c4b]/80 text-white rounded-tr-none shadow-sm flex flex-col gap-1.5 border border-emerald-500/20">
+                    <div className="flex items-center gap-1.5 text-[9px] text-emerald-300 font-bold uppercase tracking-wider">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                      Mendengarkan...
+                    </div>
+                    <span className="italic">
+                      {stt.transcript || 'Mulai berbicara sekarang...'}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {isWaitingForAI && (
+                <div className="flex justify-start">
+                  <div className="bg-[#202c33] px-3 py-2 rounded-lg rounded-tl-none text-[13.5px] text-slate-300 shadow-sm flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
+                    <span className="italic">AI mengetik…</span>
+                  </div>
+                </div>
+              )}
+              
+              <div ref={chatEndRef} />
+            </>
+          )}
+        </div>
 
-            {/* AI thinking indicator */}
+        {/* Hint / Instructions Banner */}
+        {hasStarted && currentHint && (
+          <div className="shrink-0 bg-[#1f2c34] border-t border-slate-700 p-2.5 px-4 space-y-1.5">
+            <div className="text-[12px] text-slate-300 bg-[#2a3942]/60 px-3 py-1.5 rounded border border-yellow-500/20">
+              <span className="font-bold text-yellow-500">💡 Petunjuk: </span>
+              {currentHint}
+            </div>
+          </div>
+        )}
+
+        {/* Bottom Input Bar */}
+        {hasStarted && (
+          <div className="shrink-0 bg-[#1f2c34] px-3 py-3 flex items-center gap-2 border-t border-slate-700 pb-safe">
+            {/* Audio Indicator / Controls for Mobile */}
+            {tts.isSpeaking && (
+              <button
+                onClick={handleSkipVoice}
+                className="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all shrink-0 animate-bounce shadow-md"
+                title="Lewati Suara AI"
+              >
+                <span className="text-sm">🔊</span>
+              </button>
+            )}
             {isWaitingForAI && (
-              <div className="flex gap-2.5 animate-fade-in-up">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0 bg-[var(--color-surface-active)]">
-                  🤖
-                </div>
-                <div
-                  className="px-3.5 py-2.5 rounded-[var(--radius-lg)] rounded-tl-[4px] text-[13px]"
-                  style={{
-                    backgroundColor: 'var(--color-chat-ai-bg)',
-                    border: '1px solid var(--color-chat-ai-border)',
-                    color: 'var(--color-chat-ai-text)',
-                  }}
-                >
-                  <span className="italic text-[var(--color-ink-muted)]">Typing…</span>
-                </div>
+              <div
+                className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0"
+                title="AI sedang berpikir"
+              >
+                <div className="w-4 h-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+              </div>
+            )}
+            {stt.isRecording && (
+              <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center shrink-0">
+                <VoiceWaveform isActive={true} type="user" barCount={4} />
               </div>
             )}
 
-            <div ref={chatEndRef} />
+            <div className="flex-1 bg-[#2a3942] rounded-full px-4 py-2 text-[13px] text-slate-300 truncate">
+              {stt.isRecording ? (
+                <span className="text-emerald-400 animate-pulse font-medium">Sedang merekam suara Anda...</span>
+              ) : tts.isSpeaking ? (
+                <span className="text-emerald-400 font-medium">AI sedang berbicara...</span>
+              ) : isWaitingForAI ? (
+                <span className="text-amber-400 font-medium">Menyusun tanggapan...</span>
+              ) : (
+                <span className="opacity-60">Tekan tombol mic di samping untuk bicara...</span>
+              )}
+            </div>
+
+            <button
+              disabled={!isUserTurn || isWaitingForAI}
+              onClick={stt.isRecording ? () => { stt.stopRecording(); timer.stopSpeaking(); } : () => { stt.startRecording(); timer.startSpeaking(); }}
+              className={cn(
+                "w-11 h-11 rounded-full flex items-center justify-center text-white transition-all shrink-0",
+                stt.isRecording
+                  ? "bg-red-600 animate-pulse shadow-lg scale-105"
+                  : "bg-[#00a884] hover:bg-[#008f72] disabled:opacity-40 disabled:cursor-not-allowed"
+              )}
+            >
+              {stt.isRecording ? (
+                <span className="text-lg">⏹️</span>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17.3 11c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z" />
+                </svg>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── DESKTOP VIEW (hidden lg:flex) ── */}
+      <div className="hidden lg:flex flex-col h-full overflow-hidden">
+        {/* Top Bar */}
+        <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-[var(--color-hairline)] bg-[var(--color-surface-sidebar)] flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-base shrink-0"
+              style={{ backgroundColor: 'rgba(58,134,255,0.15)', border: '1px solid rgba(58,134,255,0.3)' }}
+            >
+              🎙️
+            </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-[var(--color-ink)] truncate leading-tight">
+                {scenario.title}
+              </p>
+              <p className="text-[11px] text-[var(--color-ink-muted)] leading-tight">
+                {scenario.durationMinutes}min · {scenario.level}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)]">
+              <div className="w-16 h-1.5 rounded-full bg-[var(--color-hairline)] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
+                  style={{ width: `${turnProgress}%` }}
+                />
+              </div>
+              <span className="text-[11px] font-medium text-[var(--color-ink-muted)] tabular-nums">
+                {userTurnCount}/{MAX_USER_TURNS}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)]">
+              <span className="text-[11px] text-[var(--color-ink-muted)]">⏱</span>
+              <span className="text-[13px] font-bold text-[var(--color-ink)] tabular-nums">{elapsed}</span>
+            </div>
+
+            <button
+              id="end-session-btn"
+              onClick={handleEndSessionClick}
+              title="End session"
+              className="flex items-center gap-1.5 h-9 px-3 rounded-[var(--radius-sm)] bg-[var(--color-error)] hover:opacity-90 text-white text-[12px] font-semibold transition-opacity"
+            >
+              <EndCallIcon className="w-3.5 h-3.5" />
+              <span>End</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Desktop Main Grid */}
+        <div className="flex-1 overflow-hidden flex flex-row gap-0">
+          {/* LEFT: Avatar + Controls + Transcript */}
+          <div className="flex flex-col lg:w-[45%] shrink-0 border-r border-[var(--color-hairline)]">
+            {/* Avatar area */}
+            <div
+              className="relative flex items-center justify-center shrink-0 h-[100px] lg:h-[clamp(160px,28vh,260px)]"
+              style={{
+                backgroundColor: 'var(--color-avatar-area-bg)',
+              }}
+            >
+              <div className="text-center">
+                <div
+                  className="text-4xl lg:text-7xl mb-1 lg:mb-2 transition-transform duration-300"
+                  style={{ filter: tts.isSpeaking ? 'drop-shadow(0 0 16px rgba(58,134,255,0.6))' : 'none' }}
+                >
+                  👩‍🏫
+                </div>
+                {tts.isSpeaking && (
+                  <div className="flex justify-center gap-1">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="w-1 rounded-full bg-[var(--color-primary)]"
+                        style={{
+                          height: '12px',
+                          animation: `waveBar 0.5s ease-in-out ${i * 0.1}s infinite alternate`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Status badge */}
+              <div className="absolute top-3 left-3">
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-full)] text-[11px] font-semibold',
+                    isWaitingForAI
+                      ? 'bg-[var(--color-warning)]/15 text-[var(--color-warning)] border border-[var(--color-warning)]/30'
+                      : tts.isSpeaking
+                      ? 'bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30'
+                      : isUserTurn
+                      ? 'bg-[var(--color-success)]/15 text-[var(--color-success)] border border-[var(--color-success)]/30'
+                      : 'bg-[var(--color-surface-card)] text-[var(--color-ink-muted)] border border-[var(--color-hairline)]'
+                  )}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full animate-pulse"
+                    style={{ backgroundColor: isWaitingForAI ? '#f59e0b' : tts.isSpeaking ? '#3a86ff' : isUserTurn ? '#10b981' : '#6b7280' }}
+                  />
+                  {isWaitingForAI ? 'AI Thinking…'
+                    : tts.isSpeaking ? 'AI Speaking'
+                    : isUserTurn ? 'Your Turn'
+                    : 'Waiting'}
+                </div>
+              </div>
+
+              {/* Skip AI speech */}
+              {tts.isSpeaking && (
+                <button
+                  onClick={handleSkipVoice}
+                  className="absolute bottom-3 right-3 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)] text-[11px] font-semibold text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] transition-colors"
+                >
+                  Skip ⏭
+                </button>
+              )}
+            </div>
+
+            {/* Controls row */}
+            <div className="shrink-0 px-4 py-4 flex items-center justify-center gap-4 border-b border-[var(--color-hairline)] bg-[var(--color-surface-card)]">
+              <button className="w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--color-surface-active)] text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] border border-[var(--color-hairline)] transition-colors" title="Toggle camera">
+                <span className="text-lg">📹</span>
+              </button>
+
+              {hasStarted ? (
+                <PushToTalkButton
+                  isRecording={stt.isRecording}
+                  disabled={!isUserTurn || isWaitingForAI}
+                  onStart={() => { stt.startRecording(); timer.startSpeaking(); }}
+                  onStop={() => { stt.stopRecording(); timer.stopSpeaking(); }}
+                />
+              ) : (
+                <Button variant="primary" size="lg" onClick={handleStart} id="start-session-btn">
+                  🚀 Start Session
+                </Button>
+              )}
+
+              <button className="w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center bg-[var(--color-surface-active)] text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] border border-[var(--color-hairline)] transition-colors" title="Toggle audio">
+                <span className="text-lg">🎧</span>
+              </button>
+            </div>
+
+            {/* Live transcript */}
+            <div className="flex-1 flex flex-col p-4 overflow-hidden max-h-[190px] lg:max-h-none shrink-0 lg:shrink">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[12px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-[0.06em]">
+                  Live Transcript
+                </h3>
+                {stt.isRecording && (
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-red-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                    Recording
+                  </span>
+                )}
+              </div>
+              <div
+                className="flex-1 rounded-[var(--radius-md)] p-3 border text-[13px] leading-relaxed font-medium overflow-y-auto"
+                style={{
+                  backgroundColor: 'var(--color-transcript-bg)',
+                  borderColor: 'var(--color-hairline)',
+                  color: 'var(--color-ink)',
+                  minHeight: '80px',
+                }}
+              >
+                {stt.transcript ? stt.transcript : (
+                  <span className="text-[var(--color-ink-muted)] italic font-normal">
+                    {isUserTurn ? 'Click the mic button to speak…' : 'Waiting for your turn…'}
+                  </span>
+                )}
+              </div>
+
+              {currentHint && (
+                <div
+                  className="mt-3 rounded-[var(--radius-md)] px-3 py-2.5 text-[12px] leading-relaxed border"
+                  style={{
+                    backgroundColor: 'var(--color-chat-hint-bg)',
+                    borderColor: 'var(--color-chat-hint-border)',
+                    color: 'var(--color-ink)',
+                  }}
+                >
+                  <span className="font-semibold text-[var(--color-warning)]">💡 Hint: </span>
+                  {currentHint}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT: Chat Log */}
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Chat header */}
+            <div className="shrink-0 px-4 py-3 border-b border-[var(--color-hairline)] flex items-center justify-between bg-[var(--color-surface-card)]">
+              <div>
+                <h3 className="text-[13px] font-semibold text-[var(--color-ink)]">Conversation</h3>
+                <p className="text-[11px] text-[var(--color-ink-muted)]">AI-powered chat</p>
+              </div>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-full)] bg-[var(--color-surface-active)] border border-[var(--color-hairline)]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
+                <span className="text-[11px] font-semibold text-[var(--color-ink-secondary)]">Online</span>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {!hasStarted ? (
+                <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-8">
+                  <div className="text-4xl">🎙️</div>
+                  <div>
+                    <p className="text-[15px] font-semibold text-[var(--color-ink)] mb-1">Ready to Practice?</p>
+                    <p className="text-[12px] text-[var(--color-ink-muted)] max-w-[200px]">
+                      Press Start to begin your AI conversation session.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      'flex gap-2.5 animate-fade-in-up',
+                      msg.speaker === 'user' ? 'flex-row-reverse' : 'flex-row'
+                    )}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0"
+                      style={{
+                        backgroundColor: msg.speaker === 'ai'
+                          ? 'var(--color-surface-active)'
+                          : 'var(--color-primary)',
+                      }}
+                    >
+                      {msg.speaker === 'ai' ? '🤖' : '👤'}
+                    </div>
+
+                    <div
+                      className={cn(
+                        'px-3.5 py-2.5 rounded-[var(--radius-lg)] text-[13px] leading-relaxed max-w-[80%]',
+                        msg.speaker === 'ai' ? 'rounded-tl-[4px]' : 'rounded-tr-[4px]'
+                      )}
+                      style={msg.speaker === 'ai' ? {
+                        backgroundColor: 'var(--color-chat-ai-bg)',
+                        border: '1px solid var(--color-chat-ai-border)',
+                        color: 'var(--color-chat-ai-text)',
+                      } : {
+                        backgroundColor: 'var(--color-chat-user-bg)',
+                        color: 'var(--color-chat-user-text)',
+                      }}
+                    >
+                      {msg.isTyping ? (
+                        <div className="flex items-center gap-1 py-0.5">
+                          {[0, 1, 2].map((i) => (
+                            <div
+                              key={i}
+                              className="w-1.5 h-1.5 rounded-full"
+                              style={{
+                                backgroundColor: 'var(--color-ink-muted)',
+                                animation: `waveBar 0.6s ease-in-out ${i * 0.15}s infinite alternate`,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <span>{msg.text}</span>
+                      )}
+
+                      {msg.speaker === 'ai' && !msg.isTyping && tts.isSpeaking &&
+                        msg.id === messages.filter((m) => m.speaker === 'ai').at(-1)?.id && (
+                        <div className="mt-2 flex items-center justify-between">
+                          <VoiceWaveform isActive={true} type="ai" barCount={4} />
+                          <button
+                            onClick={handleSkipVoice}
+                            className="text-[10px] uppercase font-bold text-[var(--color-primary)] hover:underline tracking-wider"
+                          >
+                            Skip ⏭
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+
+              {isWaitingForAI && (
+                <div className="flex gap-2.5 animate-fade-in-up">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0 bg-[var(--color-surface-active)]">
+                    🤖
+                  </div>
+                  <div
+                    className="px-3.5 py-2.5 rounded-[var(--radius-lg)] rounded-tl-[4px] text-[13px]"
+                    style={{
+                      backgroundColor: 'var(--color-chat-ai-bg)',
+                      border: '1px solid var(--color-chat-ai-border)',
+                      color: 'var(--color-chat-ai-text)',
+                    }}
+                  >
+                    <span className="italic text-[var(--color-ink-muted)]">Typing…</span>
+                  </div>
+                </div>
+              )}
+
+              <div ref={chatEndRef} />
+            </div>
           </div>
         </div>
       </div>
@@ -593,7 +849,6 @@ export default function ConversationPlayer({ scenario, onComplete }: Conversatio
   );
 }
 
-/* ── Icon ─────────────────────────────────────────────────────── */
 function EndCallIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className}>

@@ -38,6 +38,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
+  const isMissionPage = pathname.startsWith('/dashboard/mission/');
+
+  if (isMissionPage) {
+    return (
+      <div className="h-dvh w-screen bg-[var(--color-canvas)] text-[var(--color-ink)] font-sans overflow-hidden relative">
+        {children}
+        {didLevelUp && (
+          <LevelUpModal xp={user.currentXp} onClose={dismissLevelUp} />
+        )}
+        <ConfettiCelebration />
+      </div>
+    );
+  }
+
   return (
     <div className="h-dvh flex bg-[var(--color-canvas)] text-[var(--color-ink)] font-sans overflow-hidden">
 

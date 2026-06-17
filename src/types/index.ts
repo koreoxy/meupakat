@@ -10,6 +10,7 @@ export interface User {
   currentLevel: UserLevel;
   currentXp: number;
   dailyTargetMinutes: number;
+  nextDailyTargetMinutes?: number;
   avatarUrl?: string;
   createdAt: string;
 }
