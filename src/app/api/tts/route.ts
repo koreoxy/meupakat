@@ -10,8 +10,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// Supported voices dari OpenAI TTS API
-export type TTSVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+// Supported voices dari OpenAI TTS API (Hanya suara perempuan/female)
+export type TTSVoice = 'nova' | 'shimmer';
 
 const DEFAULT_VOICE: TTSVoice = 'nova'; // Nova: suara perempuan, natural untuk English tutor
 
@@ -32,7 +32,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     text = body.text?.trim();
-    voice = body.voice ?? DEFAULT_VOICE;
+    const requestedVoice = body.voice;
+    
+    // Paksa agar hanya menggunakan suara perempuan (nova atau shimmer)
+    voice = (requestedVoice === 'nova' || requestedVoice === 'shimmer') 
+      ? requestedVoice 
+      : DEFAULT_VOICE;
 
     if (!text || text.length === 0) {
       return NextResponse.json({ error: 'text is required' }, { status: 400 });

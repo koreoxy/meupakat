@@ -81,53 +81,10 @@ INSTRUCTIONS FOR OUTPUT FORMAT:
 
 DO NOT return anything other than the JSON object. Output ONLY valid JSON.`;
 
-    // ─── HUGGING FACE SERVERLESS API ──────────────────────────────────────────
-    if (process.env.HUGGINGFACE_API_KEY && process.env.HUGGINGFACE_MODEL_ID) {
-      try {
-        const hfUrl = `https://api-inference.huggingface.co/models/${process.env.HUGGINGFACE_MODEL_ID}/v1/chat/completions`;
-        const apiMessages = [
-          { role: 'system', content: systemPrompt },
-          ...messages,
-        ];
-
-        const response = await fetch(hfUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: process.env.HUGGINGFACE_MODEL_ID,
-            messages: apiMessages,
-            temperature: 0.7,
-            max_tokens: 150,
-          }),
-        });
-
-        if (response.ok) {
-          const resultJson = await response.json();
-          const resultText = resultJson.choices?.[0]?.message?.content || '{}';
-          const parsed = parseRobustJson(resultText);
-
-          return NextResponse.json({
-            reply: parsed.reply || "I didn't quite catch that. Could you repeat?",
-            hintForUser: parsed.hintForUser || "Could you repeat that?",
-          });
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          console.warn('Hugging Face API non-ok response:', response.status, errorData);
-          // Don't throw, let it fall through to Groq
-        }
-      } catch (hfError) {
-        console.error('Hugging Face API call failed, falling back to Groq:', hfError);
-        // Fall through to Groq
-      }
-    }
-
-    // ─── GROQ API CALL (Fallback) ──────────────────────────────────────────────
+    // ─── GROQ API CALL ────────────────────────────────────────────────────────
     if (!process.env.GROQ_API_KEY) {
       return NextResponse.json(
-        { error: 'No API key configured (Hugging Face failed or not set, and Groq is not configured)' },
+        { error: 'No API key configured (Groq is not configured)' },
         { status: 503 }
       );
     }
@@ -142,21 +99,42 @@ DO NOT return anything other than the JSON object. Output ONLY valid JSON.`;
       ...messages,
     ];
 
-    const response = await client.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      messages: apiMessages as any,
-      temperature: 0.7,
-      max_tokens: 150,
-      response_format: { type: 'json_object' },
-    });
+    try {
+      const response = await client.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: apiMessages as any,
+        temperature: 0.7,
+        max_tokens: 1000,
+        response_format: { type: 'json_object' },
+      });
 
-    const resultText = response.choices[0]?.message?.content || '{}';
-    const resultJson = parseRobustJson(resultText);
+      const resultText = response.choices[0]?.message?.content || '{}';
+      const resultJson = parseRobustJson(resultText);
 
-    return NextResponse.json({
-      reply: resultJson.reply || "I didn't quite catch that. Could you repeat?",
-      hintForUser: resultJson.hintForUser || "Could you repeat that?",
-    });
+      return NextResponse.json({
+        reply: resultJson.reply || "I didn't quite catch that. Could you repeat?",
+        hintForUser: resultJson.hintForUser || "Could you repeat that?",
+      });
+    } catch (error: any) {
+      console.error('Groq API Call Error:', error);
+      // Check for rate limit error (429)
+      if (
+        error?.status === 429 || 
+        error?.statusCode === 429 || 
+        error?.message?.includes('429') ||
+        error?.code === 'rate_limit_exceeded'
+      ) {
+        return NextResponse.json(
+          { 
+            error: 'rate_limit', 
+            message: 'System is temporarily busy. Please wait a moment.',
+            retryAfterSeconds: 15 
+          },
+          { status: 429 }
+        );
+      }
+      throw error;
+    }
   } catch (error: any) {
     console.error('Chat API Error:', error);
     return NextResponse.json(

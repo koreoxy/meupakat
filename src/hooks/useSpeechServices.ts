@@ -2,9 +2,8 @@
 // src/hooks/useSpeechServices.ts
 // Text-to-Speech (TTS) dan Speech-to-Text (STT)
 //
-// TTS Strategy (priority order):
-//   1. OpenAI TTS via /api/tts — audio natural berkualitas tinggi (jika API key tersedia)
-//   2. Web Speech API (SpeechSynthesis) — fallback gratis berbasis browser
+// TTS Strategy:
+//   Menggunakan Web Speech API (SpeechSynthesis) gratis berbasis browser secara langsung (tidak menggunakan OpenAI).
 
 import { useState, useRef, useCallback } from 'react';
 
@@ -120,13 +119,25 @@ export function useTTS(
       utterance.volume = 1.0;
 
       const voices = window.speechSynthesis.getVoices();
-      const preferred =
-        voices.find(
-          (v) =>
-            v.lang === 'en-US' &&
-            (v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Alex'))
-        ) ?? voices.find((v) => v.lang.startsWith('en'));
-      if (preferred) utterance.voice = preferred;
+      // Saring suara bahasa Inggris perempuan (seperti Samantha, Zira, Hazel, Victoria, atau mengandung 'female')
+      // dan hindari suara laki-laki (seperti Alex, David, Mark, George)
+      const preferredFemale = voices.find(
+        (v) =>
+          v.lang.startsWith('en') &&
+          (v.name.includes('Samantha') || 
+           v.name.includes('Zira') || 
+           v.name.includes('Hazel') ||
+           v.name.includes('Victoria') ||
+           v.name.toLowerCase().includes('female'))
+      ) ?? voices.find(
+        (v) => 
+          v.lang.startsWith('en') && 
+          !v.name.includes('David') && 
+          !v.name.includes('Alex') && 
+          !v.name.includes('Mark') &&
+          !v.name.includes('George')
+      );
+      if (preferredFemale) utterance.voice = preferredFemale;
 
       // Safety timeout: Chrome sometimes hangs and never fires onend
       // Estimasi: 1 karakter = ~80ms + 2000ms buffer
@@ -179,18 +190,15 @@ export function useTTS(
   // ─── Main speak function ────────────────────────────────────────────────────
 
   const speak = useCallback(
-    async (text: string) => {
+    (text: string) => {
       // Stop apapun yang sedang berjalan
       audioRef.current?.pause();
       if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 
-      // Coba OpenAI dulu, fallback ke Web Speech jika gagal
-      const openAISuccess = await speakWithOpenAI(text);
-      if (!openAISuccess) {
-        speakWithWebSpeech(text);
-      }
+      // Langsung gunakan Web Speech API gratis berbasis browser
+      speakWithWebSpeech(text);
     },
-    [speakWithOpenAI, speakWithWebSpeech]
+    [speakWithWebSpeech]
   );
 
   const stop = useCallback(() => {

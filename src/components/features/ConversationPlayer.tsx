@@ -39,6 +39,8 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
   const [hasStarted,     setHasStarted]     = useState(false);
   const [isUserTurn,     setIsUserTurn]     = useState(false);
   const [isWaitingForAI, setIsWaitingForAI] = useState(false);
+  const [isRateLimited,  setIsRateLimited]  = useState(false);
+  const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
 
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [evaluationResult, setEvaluationResult] = useState<{ grammarScore: number; vocabularyScore: number; feedback: string } | null>(null);
@@ -64,8 +66,8 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
       setDynamicHistory(newHistory);
       setUserTurnCount((prev) => prev + 1);
 
+      const msgId = crypto.randomUUID();
       try {
-        const msgId = crypto.randomUUID();
         setMessages((prev) => [...prev, { id: msgId, speaker: 'ai', text: '', isTyping: true }]);
 
         const res = await fetch('/api/chat', {
@@ -77,6 +79,23 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
             level: scenario.level,
           }),
         });
+
+        if (res.status === 429) {
+          const errorData = await res.json().catch(() => ({}));
+          const delaySeconds = errorData.retryAfterSeconds || 15;
+          
+          setIsWaitingForAI(false);
+          setIsRateLimited(true);
+          setRateLimitCountdown(delaySeconds);
+          setMessages((prev) => prev.filter((m) => m.id !== msgId));
+
+          // Play audio notification (TTS)
+          tts.speak("System rate limit reached. Please wait a moment.");
+
+          showToast("Model sedang dalam batasan limit. Harap tunggu sebentar.", "warning", 5000);
+          return;
+        }
+
         if (!res.ok) throw new Error('API Error');
 
         const data: ChatAIResponse = await res.json();
@@ -88,6 +107,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
         );
         tts.speak(data.reply);
       } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== msgId));
         showToast('Gagal terhubung ke AI. Silakan coba bicara lagi.', 'error');
         setIsWaitingForAI(false);
         setIsUserTurn(true);
@@ -121,6 +141,25 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isWaitingForAI]);
+
+  // Countdown timer for rate limiting
+  useEffect(() => {
+    if (!isRateLimited || rateLimitCountdown <= 0) return;
+
+    const interval = setInterval(() => {
+      setRateLimitCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setIsRateLimited(false);
+          setIsUserTurn(true); // Allow user to talk again
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isRateLimited, rateLimitCountdown]);
 
   // ── TTS ─────────────────────────────────────────────────────────────────────
   const handleTTSStart = useCallback(() => { timer.startListening(); }, [timer]);
@@ -336,7 +375,12 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
             </div>
             <div>
               <h3 className="text-[14px] font-bold text-white leading-tight">AI Tutor ACE</h3>
-              {stt.isRecording ? (
+              {isRateLimited ? (
+                <p className="text-[11px] text-red-400 flex items-center gap-1 font-bold animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                  Sistem Sibuk ({rateLimitCountdown}s)
+                </p>
+              ) : stt.isRecording ? (
                 <p className="text-[11px] text-red-400 flex items-center gap-1 font-bold animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
                   Anda Berbicara...
@@ -506,7 +550,9 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
             )}
 
             <div className="flex-1 bg-[#2a3942] rounded-full px-4 py-2 text-[13px] text-slate-300 truncate">
-              {stt.isRecording ? (
+              {isRateLimited ? (
+                <span className="text-red-400 font-medium animate-pulse">⚠️ Model limit! Tunggu {rateLimitCountdown} detik...</span>
+              ) : stt.isRecording ? (
                 <span className="text-emerald-400 animate-pulse font-medium">Sedang merekam suara Anda...</span>
               ) : tts.isSpeaking ? (
                 <span className="text-emerald-400 font-medium">AI sedang berbicara...</span>
@@ -518,7 +564,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
             </div>
 
             <button
-              disabled={!isUserTurn || isWaitingForAI}
+              disabled={!isUserTurn || isWaitingForAI || isRateLimited}
               onClick={stt.isRecording ? () => { stt.stopRecording(); timer.stopSpeaking(); } : () => { stt.startRecording(); timer.startSpeaking(); }}
               className={cn(
                 "w-11 h-11 rounded-full flex items-center justify-center text-white transition-all shrink-0",
@@ -629,7 +675,9 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                 <div
                   className={cn(
                     'flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-full)] text-[11px] font-semibold',
-                    isWaitingForAI
+                    isRateLimited
+                      ? 'bg-red-500/15 text-red-500 border border-red-500/30'
+                      : isWaitingForAI
                       ? 'bg-[var(--color-warning)]/15 text-[var(--color-warning)] border border-[var(--color-warning)]/30'
                       : tts.isSpeaking
                       ? 'bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30'
@@ -639,9 +687,10 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                   )}
                 >
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse"
-                    style={{ backgroundColor: isWaitingForAI ? '#f59e0b' : tts.isSpeaking ? '#3a86ff' : isUserTurn ? '#10b981' : '#6b7280' }}
+                    style={{ backgroundColor: isRateLimited ? '#ef4444' : isWaitingForAI ? '#f59e0b' : tts.isSpeaking ? '#3a86ff' : isUserTurn ? '#10b981' : '#6b7280' }}
                   />
-                  {isWaitingForAI ? 'AI Thinking…'
+                  {isRateLimited ? `System Busy (${rateLimitCountdown}s)`
+                    : isWaitingForAI ? 'AI Thinking…'
                     : tts.isSpeaking ? 'AI Speaking'
                     : isUserTurn ? 'Your Turn'
                     : 'Waiting'}
@@ -668,7 +717,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
               {hasStarted ? (
                 <PushToTalkButton
                   isRecording={stt.isRecording}
-                  disabled={!isUserTurn || isWaitingForAI}
+                  disabled={!isUserTurn || isWaitingForAI || isRateLimited}
                   onStart={() => { stt.startRecording(); timer.startSpeaking(); }}
                   onStop={() => { stt.stopRecording(); timer.stopSpeaking(); }}
                 />
@@ -705,7 +754,11 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                   minHeight: '80px',
                 }}
               >
-                {stt.transcript ? stt.transcript : (
+                {isRateLimited ? (
+                  <span className="text-red-500 font-medium">
+                    ⚠️ System is rate-limited. Retrying is paused. Please wait {rateLimitCountdown} seconds...
+                  </span>
+                ) : stt.transcript ? stt.transcript : (
                   <span className="text-[var(--color-ink-muted)] italic font-normal">
                     {isUserTurn ? 'Click the mic button to speak…' : 'Waiting for your turn…'}
                   </span>
