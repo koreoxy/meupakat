@@ -231,7 +231,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
 
         {/* Top Header */}
-        <header className="h-16 border-b border-[var(--color-hairline)] px-6 flex items-center justify-between shrink-0 bg-[var(--color-canvas)]">
+        <header className={cn("h-16 border-b border-[var(--color-hairline)] px-6 flex items-center justify-between shrink-0 bg-[var(--color-canvas)]", pathname === '/dashboard/practice/materials' && "hidden md:flex")}>
           {/* Mobile brand */}
           <div className="flex items-center gap-2 md:hidden">
             <MeupakatLogo size={24} />
@@ -278,7 +278,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </main>
 
       {/* ── Mobile bottom bar ─────────────────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[var(--color-surface-sidebar)]/80 backdrop-blur-lg border-t border-[var(--color-hairline)] pb-safe">
+      <nav className={cn("md:hidden fixed bottom-0 inset-x-0 z-50 bg-[var(--color-surface-sidebar)]/80 backdrop-blur-lg border-t border-[var(--color-hairline)] pb-safe", pathname === '/dashboard/practice/materials' && "hidden")}>
         <div className="flex items-center justify-around px-1 py-1">
           {MOBILE_NAV.map(({ href, label, icon: Icon, id }) => {
             const isActive = href === '/dashboard'

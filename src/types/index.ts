@@ -30,6 +30,7 @@ export interface DailyProgress {
   minutesSpoken: number;
   secondsSpoken: number;
   isMissionCompleted: boolean;
+  isCardsMissionCompleted?: boolean;
 }
 
 export interface Scenario {

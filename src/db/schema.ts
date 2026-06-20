@@ -77,6 +77,7 @@ export const dailyProgress = pgTable('daily_progress', {
   secondsSpoken: integer('seconds_spoken').default(0).notNull(),
   xpEarned: integer('xp_earned').default(0).notNull(),
   isMissionCompleted: boolean('is_mission_completed').default(false).notNull(),
+  isCardsMissionCompleted: boolean('is_cards_mission_completed').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -138,6 +139,18 @@ export const speakingMaterials = pgTable('speaking_materials', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const userCardPractices = pgTable('user_card_practices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  materialId: uuid('material_id')
+    .notNull()
+    .references(() => speakingMaterials.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ─── Type exports (inferred from schema) ─────────────────────────────────────
 
 export type DbUser = typeof users.$inferSelect;
@@ -152,3 +165,5 @@ export type DbMissionDef = typeof dailyMissionDefs.$inferSelect;
 export type DbUserDailyMission = typeof userDailyMissions.$inferSelect;
 export type DbSpeakingMaterial = typeof speakingMaterials.$inferSelect;
 export type DbSpeakingMaterialInsert = typeof speakingMaterials.$inferInsert;
+export type DbUserCardPractice = typeof userCardPractices.$inferSelect;
+export type DbUserCardPracticeInsert = typeof userCardPractices.$inferInsert;

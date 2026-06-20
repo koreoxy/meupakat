@@ -255,7 +255,7 @@ export default function SpeakingCard({ material, onSuccessSubmit, index, viewMod
       )}
 
       {/* Category badge */}
-      <div className="absolute top-28 left-4 z-20">
+      <div className="absolute top-16 left-4 z-20">
         <span className="text-[10px] font-bold text-white/80 bg-white/10 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 flex items-center gap-1 uppercase tracking-wider">
           {category.emoji} {categoryLabel}
         </span>

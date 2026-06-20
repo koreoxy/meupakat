@@ -21,6 +21,7 @@ import {
   getTodayProgress,
   getWeeklyProgress,
   completeSession as serverCompleteSession,
+  completeSpeakingCardAction as serverCompleteSpeakingCardAction,
 } from '@/app/actions/progress';
 import { logout as serverLogout } from '@/app/actions/auth';
 import { useToast } from '@/components/ui/Toast';
@@ -92,6 +93,7 @@ interface AppContextValue extends AppState {
   logout: () => Promise<void>;
   updateDailyTarget: (minutes: number) => Promise<UpdateTargetResult>;
   completeSession: (secondsSpoken: number, aiPerformanceScore: number) => Promise<{ didLevelUp: boolean; xpGained: number; isMissionCompleted: boolean; newStreak: number }>;
+  completeSpeakingCard: (materialId: string) => Promise<{ success: boolean; xpGained: number; didLevelUp: boolean; isMissionCompleted: boolean; newStreak: number }>;
   dismissLevelUp: () => void;
 }
 
@@ -189,6 +191,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [refreshData, state.todayProgress]
   );
 
+  const completeSpeakingCard = useCallback(
+    async (materialId: string): Promise<{ success: boolean; xpGained: number; didLevelUp: boolean; isMissionCompleted: boolean; newStreak: number }> => {
+      try {
+        const wasMissionDoneBefore = state.todayProgress?.isMissionCompleted ?? false;
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const res = await serverCompleteSpeakingCardAction(materialId, todayStr);
+        if (res.success) {
+          if (!wasMissionDoneBefore && res.isMissionCompleted) {
+            dispatch({ type: 'SET_JUST_COMPLETED_MISSION', payload: true });
+            setTimeout(() => {
+              dispatch({ type: 'SET_JUST_COMPLETED_MISSION', payload: false });
+            }, 6000);
+          }
+          await refreshData();
+          return res;
+        }
+      } catch (err) {
+        console.error('Error completing speaking card in store:', err);
+      }
+      return { success: false, xpGained: 0, didLevelUp: false, isMissionCompleted: false, newStreak: 0 };
+    },
+    [refreshData, state.todayProgress]
+  );
+
   const dismissLevelUp = useCallback(() => {
     dispatch({ type: 'SET_LEVEL_UP', payload: false });
   }, []);
@@ -202,6 +228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         logout,
         updateDailyTarget,
         completeSession,
+        completeSpeakingCard,
         dismissLevelUp,
       }}
     >

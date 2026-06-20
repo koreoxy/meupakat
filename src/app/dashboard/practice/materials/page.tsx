@@ -53,7 +53,7 @@ function savePracticedId(id: string) {
 }
 
 export default function SpeakingMaterialsPage() {
-  const { user, streak, todayProgress } = useAppStore();
+  const { user, streak, todayProgress, completeSpeakingCard } = useAppStore();
   const { language } = useTranslation();
   const { showToast } = useToast();
 
@@ -89,10 +89,13 @@ export default function SpeakingMaterialsPage() {
 
   useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
 
-  const handleSuccessSubmit = (xpGained: number, materialId: string) => {
+  const handleSuccessSubmit = async (xpGained: number, materialId: string) => {
     // Mark as practiced in localStorage and state
     savePracticedId(materialId);
     setPracticedIds(prev => new Set([...prev, materialId]));
+
+    // Persist to server database
+    await completeSpeakingCard(materialId);
 
     showToast(
       language === 'id'
@@ -230,8 +233,8 @@ export default function SpeakingMaterialsPage() {
       {/* ════ MOBILE LAYOUT — TikTok Reels ════ */}
       <div className="lg:hidden w-full relative bg-[#090b0c]">
 
-        {/* Category navbar — below app header h-16 */}
-        <div className="fixed top-16 left-0 right-0 z-30 flex items-center justify-between px-3 py-2 bg-black/70 backdrop-blur-md border-b border-white/10">
+        {/* Category navbar — at the absolute top for mobile fullscreen layout */}
+        <div className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-3 py-2 bg-black/70 backdrop-blur-md border-b border-white/10">
           <Link href="/dashboard/practice" className="w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-white text-sm font-bold shrink-0 hover:bg-white/20 transition-colors">
             ←
           </Link>
@@ -268,23 +271,49 @@ export default function SpeakingMaterialsPage() {
             <p className="text-4xl">🃏</p>
             <p className="text-white/50 text-sm">{language === 'id' ? 'Materi tidak ditemukan.' : 'No materials found.'}</p>
           </div>
-        ) : (
-          <div
-            className="w-full overflow-y-scroll"
-            style={{ height: '100dvh', scrollSnapType: 'y mandatory', scrollBehavior: 'smooth' }}
-          >
-            {materials.map((m, idx) => (
-              <SpeakingCard
-                key={m.id}
-                material={m}
-                index={idx}
-                viewMode="mobile"
-                isPracticed={practicedIds.has(m.id)}
-                onSuccessSubmit={handleSuccessSubmit}
-              />
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          const uncompletedMaterials = materials.filter(m => !practicedIds.has(m.id));
+          
+          if (uncompletedMaterials.length === 0) {
+            return (
+              <div className="h-dvh flex flex-col items-center justify-center bg-[#090b0c] gap-3 px-8 text-center animate-fade-in">
+                <p className="text-6xl animate-bounce">🎉</p>
+                <p className="text-white text-lg font-bold">
+                  {language === 'id' ? 'Latihan Hari Ini Selesai!' : "Today's Practice Completed!"}
+                </p>
+                <p className="text-white/60 text-sm max-w-xs">
+                  {language === 'id'
+                    ? 'Semua kartu speaking kategori ini sudah diselesaikan. Kembali lagi besok untuk kartu baru! 🌅'
+                    : 'All speaking cards for this category are finished. Come back tomorrow for new cards! 🌅'}
+                </p>
+                <Link href="/dashboard/practice" className="mt-4 px-6 py-2.5 rounded-full bg-[var(--color-primary)] text-white text-xs font-bold hover:opacity-95 transition-opacity">
+                  {language === 'id' ? 'Kembali ke Latihan' : 'Back to Practice'}
+                </Link>
+              </div>
+            );
+          }
+
+          // Loop remaining materials dynamically for infinite scroll feel
+          const loopedMaterials = Array.from({ length: 15 }).flatMap(() => uncompletedMaterials);
+
+          return (
+            <div
+              className="w-full overflow-y-scroll"
+              style={{ height: '100dvh', scrollSnapType: 'y mandatory', scrollBehavior: 'smooth' }}
+            >
+              {loopedMaterials.map((m, idx) => (
+                <SpeakingCard
+                  key={`${m.id}-loop-${idx}`}
+                  material={m}
+                  index={idx}
+                  viewMode="mobile"
+                  isPracticed={false}
+                  onSuccessSubmit={handleSuccessSubmit}
+                />
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </>
   );

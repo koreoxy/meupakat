@@ -22,7 +22,7 @@ export function isTodayMissionDone(
   targetMinutes: number
 ): boolean {
   if (!todayProgress) return false;
-  return todayProgress.minutesSpoken >= targetMinutes;
+  return todayProgress.isMissionCompleted;
 }
 
 /**
@@ -71,7 +71,7 @@ export function isDayCompleted(
 ): boolean {
   const match = progressList.find((p) => p.date.startsWith(dateStr));
   if (!match) return false;
-  return match.minutesSpoken >= targetMinutes;
+  return match.isMissionCompleted;
 }
 
 /** Format minutes as "Xm Ys" or "Xm" */

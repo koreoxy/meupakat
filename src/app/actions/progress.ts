@@ -6,7 +6,7 @@
 //   - Streak reset ke 0 jika hari terlewat
 
 import { db } from '@/db';
-import { dailyProgress, streaks, users } from '@/db/schema';
+import { dailyProgress, streaks, users, userCardPractices } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getCurrentAuthUser } from './auth';
 import { addXp } from './user';
@@ -205,7 +205,7 @@ export async function completeSession(
 
   if (existing.length > 0) {
     totalSeconds = existing[0].secondsSpoken + secondsSpoken;
-    isMissionCompleted = totalSeconds >= targetSeconds;
+    isMissionCompleted = (totalSeconds >= targetSeconds) || existing[0].isCardsMissionCompleted;
 
     await db
       .update(dailyProgress)
@@ -225,6 +225,7 @@ export async function completeSession(
       secondsSpoken: totalSeconds,
       minutesSpoken: Math.floor(totalSeconds / 60),
       isMissionCompleted,
+      isCardsMissionCompleted: false,
     });
   }
 
@@ -316,6 +317,7 @@ function mapDbProgress(row: {
   minutesSpoken: number;
   secondsSpoken: number;
   isMissionCompleted: boolean;
+  isCardsMissionCompleted: boolean;
   createdAt: Date;
 }): DailyProgress {
   return {
@@ -325,6 +327,7 @@ function mapDbProgress(row: {
     minutesSpoken: row.minutesSpoken,
     secondsSpoken: row.secondsSpoken,
     isMissionCompleted: row.isMissionCompleted,
+    isCardsMissionCompleted: row.isCardsMissionCompleted,
   };
 }
 
@@ -341,5 +344,157 @@ export async function getAllProgress(): Promise<DailyProgress[]> {
     .orderBy(dailyProgress.date);
 
   return results.map(mapDbProgress);
+}
+
+export async function completeSpeakingCardAction(
+  materialId: string,
+  clientDate?: string
+): Promise<{ success: boolean; xpGained: number; didLevelUp: boolean; isMissionCompleted: boolean; newStreak: number; error?: string }> {
+  const authUser = await getCurrentAuthUser();
+  if (!authUser) {
+    return { success: false, xpGained: 0, didLevelUp: false, isMissionCompleted: false, newStreak: 0, error: 'Not authenticated.' };
+  }
+
+  const today = clientDate || format(new Date(), 'yyyy-MM-dd');
+
+  // Insert into userCardPractices
+  await db.insert(userCardPractices).values({
+    userId: authUser.id,
+    materialId,
+    date: today,
+  });
+
+  // Count unique cards completed today
+  const practicedToday = await db
+    .select({ materialId: userCardPractices.materialId })
+    .from(userCardPractices)
+    .where(
+      and(
+        eq(userCardPractices.userId, authUser.id),
+        eq(userCardPractices.date, today)
+      )
+    );
+
+  const uniqueMaterials = new Set(practicedToday.map(p => p.materialId));
+  const completedCount = uniqueMaterials.size;
+  const isCardsMissionCompleted = completedCount >= 5;
+
+  // Retrieve user target minutes
+  const userRows = await db
+    .select({ dailyTargetMinutes: users.dailyTargetMinutes })
+    .from(users)
+    .where(eq(users.id, authUser.id))
+    .limit(1);
+
+  const dailyTargetMinutes = userRows.length > 0 ? userRows[0].dailyTargetMinutes : 10;
+  const targetSeconds = dailyTargetMinutes * 60;
+
+  // Upsert daily progress
+  const existing = await db
+    .select()
+    .from(dailyProgress)
+    .where(
+      and(
+        eq(dailyProgress.userId, authUser.id),
+        eq(dailyProgress.date, today)
+      )
+    )
+    .limit(1);
+
+  let isMissionCompleted = false;
+
+  if (existing.length > 0) {
+    isMissionCompleted = (existing[0].secondsSpoken >= targetSeconds) || isCardsMissionCompleted;
+    await db
+      .update(dailyProgress)
+      .set({
+        isCardsMissionCompleted,
+        isMissionCompleted,
+      })
+      .where(eq(dailyProgress.id, existing[0].id));
+  } else {
+    isMissionCompleted = isCardsMissionCompleted;
+    await db.insert(dailyProgress).values({
+      userId: authUser.id,
+      date: today,
+      secondsSpoken: 0,
+      minutesSpoken: 0,
+      isCardsMissionCompleted,
+      isMissionCompleted,
+    });
+  }
+
+  // Update streak if needed
+  let currentStreakVal = 0;
+  let streakRows = await db
+    .select()
+    .from(streaks)
+    .where(eq(streaks.userId, authUser.id))
+    .limit(1);
+
+  if (streakRows.length === 0) {
+    const inserted = await db
+      .insert(streaks)
+      .values({
+        userId: authUser.id,
+        currentStreak: 0,
+        longestStreak: 0,
+      })
+      .returning();
+    streakRows = inserted;
+  }
+
+  if (streakRows.length > 0) {
+    const streak = streakRows[0];
+    const lastActive = streak.lastActiveDate;
+
+    // Check if streak was broken (last active date was before yesterday)
+    const isStreakBroken = lastActive && !isToday(lastActive) && !isYesterday(lastActive);
+    let currentStreakTemp = isStreakBroken ? 0 : streak.currentStreak;
+
+    // Update streak if mission completed today
+    if (isMissionCompleted) {
+      const alreadyCountedToday = lastActive && isToday(lastActive);
+
+      if (!alreadyCountedToday) {
+        const wasYesterday = lastActive ? isYesterday(lastActive) : false;
+        currentStreakVal = wasYesterday ? currentStreakTemp + 1 : 1;
+        const newLongest = Math.max(streak.longestStreak, currentStreakVal);
+
+        await db
+          .update(streaks)
+          .set({
+            currentStreak: currentStreakVal,
+            longestStreak: newLongest,
+            lastActiveDate: new Date(),
+          })
+          .where(eq(streaks.id, streak.id));
+      } else {
+        currentStreakVal = currentStreakTemp;
+      }
+    } else {
+      if (isStreakBroken) {
+        await db
+          .update(streaks)
+          .set({
+            currentStreak: 0,
+          })
+          .where(eq(streaks.id, streak.id));
+      }
+      currentStreakVal = currentStreakTemp;
+    }
+  }
+
+  // Revalidate paths for real-time update
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/practice/materials');
+
+  return {
+    success: true,
+    xpGained: 0,
+    didLevelUp: false,
+    isMissionCompleted,
+    newStreak: currentStreakVal,
+  };
 }
 

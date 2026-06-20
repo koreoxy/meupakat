@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
+import { format } from 'date-fns';
 import Link from 'next/link';
 import StreakCalendar from '@/components/features/StreakCalendar';
 import ProgressBar from '@/components/ui/ProgressBar';
@@ -38,7 +39,7 @@ const LEVEL_TIPS: Record<string, Record<Language, string>> = {
 };
 
 export default function DashboardPage() {
-  const { user, streak, todayProgress, weeklyProgress } = useAppStore();
+  const { user, streak, todayProgress, weeklyProgress, completeSpeakingCard } = useAppStore();
   const { t, language } = useTranslation();
 
   if (!user || !streak) return null;
@@ -54,8 +55,47 @@ export default function DashboardPage() {
   const suggestedScenarios = SCENARIOS.filter((s) => s.level === user.currentLevel).slice(0, 2);
   const recommendations  = useMemo(() => getRecommendations(user.currentLevel), [user.currentLevel]);
 
+  // Hitung jumlah kartu yang selesai diselesaikan hari ini
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  let localPracticedCount = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('meupakat_practiced_' + todayStr);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          localPracticedCount = parsed.length;
+        }
+      }
+    } catch {}
+  }
+  const cardsCompleted = todayProgress?.isCardsMissionCompleted ? 5 : Math.min(5, localPracticedCount);
+  const isCardsDone = (todayProgress?.isCardsMissionCompleted ?? false) || cardsCompleted >= 5;
+
+  // Sinkronkan pengerjaan kartu di localStorage ke server jika belum terdata di DB
+  useEffect(() => {
+    if (typeof window !== 'undefined' && todayProgress && !todayProgress.isCardsMissionCompleted) {
+      try {
+        const raw = localStorage.getItem('meupakat_practiced_' + todayStr);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const syncCardCompletions = async () => {
+              for (const id of parsed) {
+                await completeSpeakingCard(id);
+              }
+            };
+            syncCardCompletions();
+          }
+        }
+      } catch (e) {
+        console.error("Failed to sync card completions:", e);
+      }
+    }
+  }, [todayProgress, todayStr, completeSpeakingCard]);
+
   // Daily login reward: show if no activity today yet
-  const hasActivityToday = (todayProgress?.secondsSpoken ?? 0) > 0;
+  const hasActivityToday = (todayProgress?.secondsSpoken ?? 0) > 0 || cardsCompleted > 0;
   const dayOfStreak = streak.currentStreak;
 
   return (
@@ -152,30 +192,98 @@ export default function DashboardPage() {
           {/* ── Today's mission ─────────────────────────── */}
           <Card variant="feature">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">{language === 'id' ? 'Misi Hari Ini' : "Today's Mission"}</h2>
+              <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">
+                🎯 {language === 'id' ? 'Misi Hari Ini' : "Today's Missions"}
+              </h2>
               <span
                 className={cn(
-                  'text-[11px] font-semibold px-2.5 py-1 rounded-[var(--radius-full)]',
+                  'text-[11px] font-bold px-2.5 py-1 rounded-[var(--radius-full)]',
                   isMissionDone
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 animate-pulse'
                     : 'bg-[var(--color-surface-active)] text-[var(--color-ink-muted)] border border-[var(--color-hairline)]'
                 )}
               >
-                {isMissionDone ? (language === 'id' ? '✅ Selesai!' : '✅ Done!') : `${formatDuration(todayProgress?.secondsSpoken ?? 0)} / ${user.dailyTargetMinutes}m`}
+                {isMissionDone 
+                  ? (language === 'id' ? '🔥 Streak Aman!' : '🔥 Streak Secured!') 
+                  : (language === 'id' ? '⏳ 1 Misi Lagi' : '⏳ 1 Mission Left')}
               </span>
             </div>
-            <ProgressBar
-              value={todayPercent}
-              variant={isMissionDone ? 'accent' : 'brand'}
-              size="lg"
-              showLabel
-              label={`${Math.round(todayPercent)}% ` + (language === 'id' ? 'dari target harian' : 'of daily goal')}
-            />
-            {!isMissionDone && (
-              <p className="text-[12px] text-[var(--color-ink-muted)] mt-2">
-                {formatDuration(Math.max(0, user.dailyTargetMinutes * 60 - (todayProgress?.secondsSpoken ?? 0)))} {language === 'id' ? 'tersisa hari ini' : 'remaining today'}
-              </p>
-            )}
+
+            <div className="space-y-4">
+              {/* Mission 1: Speaking Time Goal */}
+              <div className="p-3.5 rounded-[var(--radius-lg)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🔊</span>
+                    <div>
+                      <p className="text-[13px] font-bold text-[var(--color-ink)]">
+                        {language === 'id' ? 'Misi 1: Target Durasi Berbicara' : 'Mission 1: Speaking Time Target'}
+                      </p>
+                      <p className="text-[11px] text-[var(--color-ink-muted)]">
+                        {language === 'id' 
+                          ? `Bicara bahasa Inggris selama ${user.dailyTargetMinutes} menit` 
+                          : `Speak English for ${user.dailyTargetMinutes} minutes`}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={cn(
+                    "text-[11px] font-bold px-2 py-0.5 rounded-full",
+                    (todayProgress?.secondsSpoken ?? 0) >= (user.dailyTargetMinutes * 60)
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-[var(--color-surface-active)] text-[var(--color-ink-muted)]"
+                  )}>
+                    {formatDuration(todayProgress?.secondsSpoken ?? 0)} / {user.dailyTargetMinutes}m
+                  </span>
+                </div>
+                <ProgressBar
+                  value={todayPercent}
+                  variant={(todayProgress?.secondsSpoken ?? 0) >= (user.dailyTargetMinutes * 60) ? 'accent' : 'brand'}
+                  size="md"
+                />
+              </div>
+
+              {/* Mission 2: Complete Speaking Cards */}
+              <div className="p-3.5 rounded-[var(--radius-lg)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🃏</span>
+                    <div>
+                      <p className="text-[13px] font-bold text-[var(--color-ink)]">
+                        {language === 'id' ? 'Misi 2: Selesaikan Semua Kartu Speaking' : 'Mission 2: Complete All Speaking Cards'}
+                      </p>
+                      <p className="text-[11px] text-[var(--color-ink-muted)]">
+                        {language === 'id'
+                          ? 'Selesaikan 5 kartu latihan berbicara hari ini'
+                          : 'Complete 5 speaking practice cards today'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={cn(
+                    "text-[11px] font-bold px-2 py-0.5 rounded-full",
+                    isCardsDone
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : "bg-[var(--color-surface-active)] text-[var(--color-ink-muted)]"
+                  )}>
+                    {cardsCompleted} / 5 {language === 'id' ? 'kartu' : 'cards'}
+                  </span>
+                </div>
+                <div className="mt-2.5 h-1.5 bg-[var(--color-surface-active)] rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      isCardsDone ? "bg-emerald-500" : "bg-[var(--color-primary)]"
+                    )}
+                    style={{ width: `${Math.min(100, (cardsCompleted / 5) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[11.5px] text-[var(--color-ink-muted)] mt-3 text-center italic">
+              {language === 'id'
+                ? 'Selesaikan salah satu atau kedua misi di atas untuk mempertahankan Daily Streak Anda! 🌅'
+                : 'Complete either or both missions above to preserve your Daily Streak! 🌅'}
+            </p>
           </Card>
 
           {/* ── Smart Recommendations ─────────────────── */}

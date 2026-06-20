@@ -11,23 +11,35 @@ const sql = postgres(connectionString, { prepare: false });
 
 async function run() {
   try {
-    console.log("Checking if column 'next_daily_target_minutes' exists in 'users'...");
-    const check = await sql`
+    console.log("Checking if column 'is_cards_mission_completed' exists in 'daily_progress'...");
+    const checkColumn = await sql`
       SELECT column_name 
       FROM information_schema.columns 
-      WHERE table_name='users' AND column_name='next_daily_target_minutes';
+      WHERE table_name='daily_progress' AND column_name='is_cards_mission_completed';
     `;
     
-    if (check.length === 0) {
-      console.log("Adding column 'next_daily_target_minutes' to 'users' table...");
+    if (checkColumn.length === 0) {
+      console.log("Adding column 'is_cards_mission_completed' to 'daily_progress' table...");
       await sql`
-        ALTER TABLE users 
-        ADD COLUMN next_daily_target_minutes integer NOT NULL DEFAULT 10;
+        ALTER TABLE daily_progress 
+        ADD COLUMN is_cards_mission_completed boolean NOT NULL DEFAULT false;
       `;
-      console.log("Successfully added 'next_daily_target_minutes' column.");
+      console.log("Successfully added 'is_cards_mission_completed' column.");
     } else {
-      console.log("Column 'next_daily_target_minutes' already exists.");
+      console.log("Column 'is_cards_mission_completed' already exists.");
     }
+
+    console.log("Creating table 'user_card_practices' if not exists...");
+    await sql`
+      CREATE TABLE IF NOT EXISTS user_card_practices (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        material_id uuid NOT NULL REFERENCES speaking_materials(id) ON DELETE CASCADE,
+        date text NOT NULL,
+        created_at timestamp with time zone DEFAULT now() NOT NULL
+      );
+    `;
+    console.log("Successfully processed table 'user_card_practices'.");
   } catch (err) {
     console.error("Migration failed:", err);
   } finally {
