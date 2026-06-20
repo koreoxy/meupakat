@@ -9,6 +9,7 @@ const translations = {
     // Nav
     nav_home: 'Beranda',
     nav_practice: 'Latihan',
+    nav_materials: 'Kartu Speaking',
     nav_stats: 'Statistik',
     nav_leaderboard: 'Papan Peringkat',
     nav_vocabulary: 'Kamus & Kosakata',
@@ -75,6 +76,7 @@ const translations = {
     // Nav
     nav_home: 'Home',
     nav_practice: 'Practice',
+    nav_materials: 'Speaking Cards',
     nav_stats: 'Stats',
     nav_leaderboard: 'Leaderboard',
     nav_vocabulary: 'Dictionary & Vocab',

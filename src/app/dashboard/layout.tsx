@@ -2,7 +2,7 @@
 // src/app/dashboard/layout.tsx
 // Dashboard shell — persistent sidebar + header with auth guard
 
-import { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAppStore } from '@/hooks/useAppStore';
@@ -17,6 +17,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 const NAV_ITEMS = [
   { href: '/dashboard',             label: 'Home',        icon: HomeIcon,        id: 'nav-home' },
   { href: '/dashboard/practice',    label: 'Practice',    icon: MicIcon,         id: 'nav-practice' },
+  { href: '/dashboard/practice/materials', label: 'Speaking Cards', icon: CardIcon, id: 'nav-materials' },
   { href: '/dashboard/stats',       label: 'Stats',       icon: ChartIcon,       id: 'nav-stats' },
   { href: '/dashboard/leaderboard', label: 'Leaderboard', icon: TrophyIcon,      id: 'nav-leaderboard' },
   { href: '/dashboard/vocabulary',  label: 'Vocabulary',  icon: BookIcon,        id: 'nav-vocabulary' },
@@ -24,16 +25,28 @@ const NAV_ITEMS = [
 ];
 
 // Mobile nav shows 5 essential items (Home, Practice, Vocabulary, Leaderboard, Profile)
-const MOBILE_NAV = NAV_ITEMS.filter(n =>
-  ['/dashboard', '/dashboard/practice', '/dashboard/vocabulary', '/dashboard/leaderboard', '/dashboard/profile'].includes(n.href)
-);
+const MOBILE_NAV = [
+  { href: '/dashboard',             label: 'Home',        icon: HomeIcon,        id: 'nav-home' },
+  { href: '/dashboard/practice',    label: 'Practice',    icon: MicIcon,         id: 'nav-practice' },
+  { href: '/dashboard/vocabulary',  label: 'Vocabulary',  icon: BookIcon,        id: 'nav-vocabulary' },
+  { href: '/dashboard/leaderboard', label: 'Leaderboard', icon: TrophyIcon,      id: 'nav-leaderboard' },
+  { href: '/dashboard/profile',     label: 'Profile',     icon: UserIcon,        id: 'nav-profile' },
+];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading, didLevelUp, dismissLevelUp } = useAppStore();
   const { theme, toggleTheme, isDark } = useTheme();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
+
+  const [isPracticeOpen, setIsPracticeOpen] = useState(false);
+
+  useEffect(() => {
+    if (pathname.startsWith('/dashboard/practice')) {
+      setIsPracticeOpen(true);
+    }
+  }, [pathname]);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -67,6 +80,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     switch (href) {
       case '/dashboard': return t('nav_home');
       case '/dashboard/practice': return t('nav_practice');
+      case '/dashboard/practice/materials': return t('nav_materials');
       case '/dashboard/stats': return t('nav_stats');
       case '/dashboard/leaderboard': return t('nav_leaderboard');
       case '/dashboard/vocabulary': return t('nav_vocabulary');
@@ -97,11 +111,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             Main
           </p>
           {NAV_ITEMS.map(({ href, label, icon: Icon, id }) => {
+            // Skip rendering practice routes directly in NAV_ITEMS mapping
+            if (href === '/dashboard/practice' || href === '/dashboard/practice/materials') {
+              return null;
+            }
+
             const isActive = href === '/dashboard'
               ? pathname === '/dashboard'
               : pathname.startsWith(href);
             const displayLabel = getTranslatedLabel(href, label);
-            return (
+
+            const renderLink = (
               <Link
                 key={href}
                 href={href}
@@ -117,6 +137,72 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {displayLabel}
               </Link>
             );
+
+            // Insert Latihan Dropdown right after Home (/dashboard)
+            if (href === '/dashboard') {
+              const isAnyPracticeActive = pathname.startsWith('/dashboard/practice');
+              return (
+                <React.Fragment key={href}>
+                  {renderLink}
+                  
+                  {/* Group: Latihan / Practice Dropdown */}
+                  <div className="flex flex-col my-0.5">
+                    <button
+                      onClick={() => setIsPracticeOpen(prev => !prev)}
+                      className={cn(
+                        'flex items-center justify-between px-3 py-2.5 rounded-[var(--radius-sm)] text-[13px] font-medium transition-colors duration-150 w-full text-left',
+                        isAnyPracticeActive
+                          ? 'bg-[var(--color-surface-active)] text-[var(--color-ink)]'
+                          : 'text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-active)]'
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <MicIcon className="w-4 h-4 shrink-0" />
+                        <span>{language === 'id' ? 'Latihan' : 'Practice'}</span>
+                      </div>
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        className={cn("w-3.5 h-3.5 transition-transform duration-200 text-[var(--color-ink-muted)]", isPracticeOpen ? "rotate-180" : "")}
+                      >
+                        <path d="M7 10l5 5 5-5z" />
+                      </svg>
+                    </button>
+                    
+                    {isPracticeOpen && (
+                      <div className="pl-6 flex flex-col gap-0.5 mt-1 border-l border-[var(--color-hairline)] ml-5">
+                        <Link
+                          href="/dashboard/practice"
+                          id="nav-practice-scenarios"
+                          className={cn(
+                            'px-3 py-2 rounded-[var(--radius-sm)] text-[12px] font-medium transition-colors duration-150 block',
+                            pathname === '/dashboard/practice'
+                              ? 'bg-[var(--color-surface-active)] text-[var(--color-ink)]'
+                              : 'text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-active)]'
+                          )}
+                        >
+                          {language === 'id' ? 'Skenario Percakapan' : 'Conversation Scenarios'}
+                        </Link>
+                        <Link
+                          href="/dashboard/practice/materials"
+                          id="nav-materials"
+                          className={cn(
+                            'px-3 py-2 rounded-[var(--radius-sm)] text-[12px] font-medium transition-colors duration-150 block',
+                            pathname === '/dashboard/practice/materials'
+                              ? 'bg-[var(--color-surface-active)] text-[var(--color-ink)]'
+                              : 'text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface-active)]'
+                          )}
+                        >
+                          {language === 'id' ? 'Kartu Speaking' : 'Speaking Cards'}
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                </React.Fragment>
+              );
+            }
+
+            return renderLink;
           })}
         </nav>
 
@@ -293,6 +379,14 @@ function UserIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
       <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-5.33 0-8 2.67-8 4v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1c0-1.33-2.67-4-8-4z" />
+    </svg>
+  );
+}
+
+function CardIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
     </svg>
   );
 }

@@ -28,6 +28,12 @@ export const missionTypeEnum = pgEnum('mission_type', [
   'streak_day',
 ]);
 
+export const speakingMaterialTypeEnum = pgEnum('speaking_material_type', [
+  'quote',
+  'movie_script',
+  'song_lyrics',
+]);
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 // Tersinkronisasi dengan auth.users Supabase via trigger (lihat migrations/rls.sql)
 
@@ -118,6 +124,20 @@ export const userDailyMissions = pgTable('user_daily_missions', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// ─── Speaking Materials ───────────────────────────────────────────────────────
+
+export const speakingMaterials = pgTable('speaking_materials', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  type: speakingMaterialTypeEnum('type').notNull(),
+  content: text('content').notNull(),
+  translation: text('translation'),
+  source: text('source').notNull(),
+  difficulty: userLevelEnum('difficulty').default('beginner').notNull(),
+  xpReward: integer('xp_reward').default(15).notNull(),
+  audioUrl: text('audio_url'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 // ─── Type exports (inferred from schema) ─────────────────────────────────────
 
 export type DbUser = typeof users.$inferSelect;
@@ -130,3 +150,5 @@ export type DbUserVocab = typeof userVocabularies.$inferSelect;
 export type DbUserVocabInsert = typeof userVocabularies.$inferInsert;
 export type DbMissionDef = typeof dailyMissionDefs.$inferSelect;
 export type DbUserDailyMission = typeof userDailyMissions.$inferSelect;
+export type DbSpeakingMaterial = typeof speakingMaterials.$inferSelect;
+export type DbSpeakingMaterialInsert = typeof speakingMaterials.$inferInsert;

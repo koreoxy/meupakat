@@ -294,3 +294,9 @@ body {
 .animate-streak-fire     { animation: streakFire 0.8s ease-in-out infinite; }
 .animate-wave-bar        { animation: waveBar 0.6s ease-in-out infinite alternate; }
 .animate-pulse-record    { animation: pulseRecord 1.2s ease-in-out infinite; }
+.animate-slide-up        { animation: slideUp 0.35s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}

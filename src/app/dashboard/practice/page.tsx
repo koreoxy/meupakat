@@ -155,6 +155,44 @@ export default function PracticePage() {
         </div>
       </Link>
 
+      {/* ── 🃏 Speaking Cards Feature Banner ──────────────── */}
+      <Link
+        href="/dashboard/practice/materials"
+        id="speaking-materials-banner"
+        className="block mb-6 rounded-[var(--radius-xl)] overflow-hidden transition-all duration-200 active:scale-[0.99] group border"
+        style={{
+          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.1) 50%, rgba(236, 72, 153, 0.05) 100%)',
+          borderColor: 'rgba(99, 102, 241, 0.3)',
+          boxShadow: '0 4px 20px rgba(99, 102, 241, 0.1)',
+        }}
+      >
+        <div className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-[var(--radius-lg)] bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-3xl shrink-0">
+              🃏
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[16px] font-black text-[var(--color-ink)] leading-tight">
+                  {language === 'id' ? 'Kartu Speaking' : 'Speaking Cards'}
+                </h2>
+                <span className="text-[9px] font-bold bg-indigo-500/25 text-indigo-400 px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+                  {language === 'id' ? 'Baru' : 'New'}
+                </span>
+              </div>
+              <p className="text-[12px] text-[var(--color-ink-muted)] mt-1.5 leading-relaxed max-w-xl">
+                {language === 'id'
+                  ? 'Latih kelancaran bicara bahasa Inggris menggunakan kutipan tokoh inspiratif, dialog naskah film, dan lirik lagu populer secara gratis.'
+                  : 'Practice speaking English fluently using inspirational quotes, movie lines, and popular song lyrics for free.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[12px] font-bold text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0 self-end sm:self-center">
+            <span>{language === 'id' ? 'Pilih Kategori' : 'Pick Category'} →</span>
+          </div>
+        </div>
+      </Link>
+
       {/* ── Section title ───────────────────────────── */}
       <div className="flex items-center gap-3 mb-4">
         <h2 className="text-[14px] font-semibold text-[var(--color-ink)]">{language === 'id' ? 'Semua Skenario' : 'All Scenarios'}</h2>
