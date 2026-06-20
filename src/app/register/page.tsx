@@ -228,11 +228,11 @@ export default function RegisterPage() {
                 variant="secondary"
                 size="lg"
                 fullWidth
-                onClick={handleGoogleRegister}
-                disabled={isLoading}
+                disabled
               >
                 <GoogleIcon />
-                Daftar dengan Google
+                <span>Daftar dengan Google</span>
+                <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--color-hairline)] text-[var(--color-ink-muted)] uppercase tracking-wider">Soon</span>
               </Button>
             </form>
           </>

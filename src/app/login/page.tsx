@@ -155,11 +155,11 @@ export default function LoginPage() {
             variant="secondary"
             size="lg"
             fullWidth
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
+            disabled
           >
             <GoogleIcon />
-            Lanjutkan dengan Google
+            <span>Lanjutkan dengan Google</span>
+            <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--color-hairline)] text-[var(--color-ink-muted)] uppercase tracking-wider">Soon</span>
           </Button>
         </form>
 
