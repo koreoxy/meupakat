@@ -280,7 +280,7 @@ export default function SpeakingCard({ material, onSuccessSubmit, index, viewMod
       </div>
 
       {/* Floating right action bar */}
-      {!isPracticed && (
+      {!showResultPane && !isPracticed && (
         <div className="absolute right-4 bottom-44 z-20 flex flex-col items-center gap-5">
           <div className="flex flex-col items-center gap-1">
             <span className="text-[11px] font-black text-yellow-400">+{material.xpReward} XP</span>
@@ -311,7 +311,7 @@ export default function SpeakingCard({ material, onSuccessSubmit, index, viewMod
       )}
 
       {/* Big record button — center bottom */}
-      {!isPracticed && (
+      {!showResultPane && !isPracticed && (
         <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
           <button
             onClick={toggleRecording}
@@ -327,7 +327,7 @@ export default function SpeakingCard({ material, onSuccessSubmit, index, viewMod
 
       {/* Score result — bottom drawer */}
       {showResultPane && accuracyScore !== null && (
-        <div className="absolute inset-x-0 bottom-0 z-30 bg-[var(--color-surface-modal)]/95 backdrop-blur-xl border-t border-[var(--color-hairline)] rounded-t-3xl p-6 animate-slide-up">
+        <div className="absolute inset-x-0 bottom-0 z-[60] bg-[var(--color-surface-modal)] border-t border-[var(--color-hairline)] rounded-t-3xl p-6 pb-24 shadow-[0_-8px_30px_rgba(0,0,0,0.5)] animate-slide-up">
           <div className="flex flex-col items-center text-center">
             <div className="w-10 h-1 bg-[var(--color-hairline)] rounded-full mb-5" />
             <span className="text-3xl mb-2">📊</span>

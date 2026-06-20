@@ -7,9 +7,10 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Aplikasi belajar speaking English yang interaktif dan menyenangkan.',
     start_url: '/',
     display: 'standalone',
-    background_color: '#121314',
-    theme_color: '#121314',
+    background_color: '#0c0d0e',
+    theme_color: '#0c0d0e',
     orientation: 'portrait',
+
     icons: [
       {
         src: '/icons/icon-192.png',

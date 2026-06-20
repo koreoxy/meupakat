@@ -6,6 +6,7 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { LanguageProvider } from '@/hooks/useTranslation';
 import RegisterSW from '@/components/RegisterSW';
+import SplashScreen from '@/components/ui/SplashScreen';
 
 export const metadata: Metadata = {
   title: 'Meupakat — Belajar Speaking English',
@@ -24,7 +25,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#121314',
+  themeColor: '#0c0d0e',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -42,12 +43,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-title" content="Meupakat" />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
-      <body className="min-h-dvh bg-[var(--color-canvas)] text-[var(--color-ink)]">
+      <body className="min-h-dvh bg-[var(--color-canvas)] text-[var(--color-ink)] animate-fade-in">
         <ToastProvider>
           <ThemeProvider>
             <AppProvider>
               <LanguageProvider>
                 <RegisterSW />
+                <SplashScreen />
                 {children}
               </LanguageProvider>
             </AppProvider>
@@ -57,3 +59,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+
