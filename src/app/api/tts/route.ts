@@ -60,11 +60,11 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'tts-1',           // tts-1 = standard speed, tts-1-hd = higher quality
+        model: 'tts-1-hd',        // tts-1-hd = highest quality, most natural human-like voice
         input: text,
         voice,
         response_format: 'mp3',   // mp3 paling kompatibel dengan browser
-        speed: 0.95,              // Sedikit lebih lambat untuk pembelajaran
+        speed: 1.0,               // Normal speed – tts-1-hd sudah natural tanpa perlu diperlambat
       }),
     });
 

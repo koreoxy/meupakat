@@ -1,7 +1,7 @@
 'use client';
 // src/components/ui/Toast.tsx
 
-import { useEffect, useState, useCallback, createContext, useContext, type ReactNode } from 'react';
+import { useEffect, useState, useCallback, createContext, useContext, useRef, type ReactNode } from 'react';
 import { cn } from '@/lib/utils/cn';
 import type { ToastMessage } from '@/types';
 
@@ -23,10 +23,10 @@ const iconMap: Record<ToastMessage['type'], string> = {
 };
 
 const colorMap: Record<ToastMessage['type'], string> = {
-  success: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
-  warning: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-  error: 'border-red-500/40 bg-red-500/10 text-red-300',
-  info: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
+  success: 'border-emerald-500/30 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300',
+  warning: 'border-amber-500/30 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300',
+  error: 'border-red-500/30 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 text-red-800 dark:text-red-300',
+  info: 'border-sky-500/30 dark:border-sky-500/20 bg-sky-50 dark:bg-sky-500/10 text-sky-800 dark:text-sky-300',
 };
 
 function ToastItem({
@@ -83,9 +83,16 @@ function ToastItem({
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const lastToastTimeRef = useRef<number>(0);
 
   const showToast = useCallback(
     (message: string, type: ToastMessage['type'] = 'info', duration = 3500) => {
+      const now = Date.now();
+      if (now - lastToastTimeRef.current < 800) {
+        return;
+      }
+      lastToastTimeRef.current = now;
+
       const id = crypto.randomUUID();
       setToasts((prev) => [...prev, { id, type, message, duration }]);
     },
@@ -101,7 +108,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {/* Portal-like fixed container */}
       <div
-        className="fixed bottom-[88px] sm:bottom-24 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 items-center w-[calc(100vw-32px)] sm:max-w-sm"
+        className="fixed bottom-20 left-1/2 -translate-x-1/2 sm:bottom-6 sm:right-6 sm:left-auto sm:translate-x-0 z-[9999] flex flex-col gap-2 items-center w-[calc(100vw-32px)] sm:max-w-sm"
         aria-live="polite"
         aria-atomic="true"
       >

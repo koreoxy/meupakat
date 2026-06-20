@@ -20,6 +20,14 @@ export const userLevelEnum = pgEnum('user_level', [
   'advanced',
 ]);
 
+export const missionTypeEnum = pgEnum('mission_type', [
+  'speak_time',
+  'vocab_lookup',
+  'complete_session',
+  'perfect_score',
+  'streak_day',
+]);
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 // Tersinkronisasi dengan auth.users Supabase via trigger (lihat migrations/rls.sql)
 
@@ -30,6 +38,7 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   currentLevel: userLevelEnum('current_level').default('beginner').notNull(),
   currentXp: integer('current_xp').default(0).notNull(),
+  weeklyXp: integer('weekly_xp').default(0).notNull(),
   dailyTargetMinutes: integer('daily_target_minutes').default(10).notNull(),
   nextDailyTargetMinutes: integer('next_daily_target_minutes').default(10).notNull(),
   avatarUrl: text('avatar_url'),
@@ -60,7 +69,52 @@ export const dailyProgress = pgTable('daily_progress', {
   date: text('date').notNull(),
   minutesSpoken: integer('minutes_spoken').default(0).notNull(),
   secondsSpoken: integer('seconds_spoken').default(0).notNull(),
+  xpEarned: integer('xp_earned').default(0).notNull(),
   isMissionCompleted: boolean('is_mission_completed').default(false).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ─── User Vocabularies (Bookmarked Words) ─────────────────────────────────────
+
+export const userVocabularies = pgTable('user_vocabularies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  word: text('word').notNull(),
+  phonetic: text('phonetic'),
+  partOfSpeech: text('part_of_speech'),
+  definition: text('definition').notNull(),
+  example: text('example'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// ─── Daily Mission Definitions (Library) ─────────────────────────────────────
+
+export const dailyMissionDefs = pgTable('daily_mission_defs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  type: missionTypeEnum('type').notNull(),
+  targetValue: integer('target_value').notNull(),
+  xpReward: integer('xp_reward').notNull(),
+  icon: text('icon').notNull().default('🎯'),
+});
+
+// ─── User Daily Missions (Progress per User per Day) ─────────────────────────
+
+export const userDailyMissions = pgTable('user_daily_missions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  missionDefId: uuid('mission_def_id')
+    .notNull()
+    .references(() => dailyMissionDefs.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(),
+  currentValue: integer('current_value').default(0).notNull(),
+  isCompleted: boolean('is_completed').default(false).notNull(),
+  isClaimed: boolean('is_claimed').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -72,3 +126,7 @@ export type DbStreak = typeof streaks.$inferSelect;
 export type DbStreakInsert = typeof streaks.$inferInsert;
 export type DbDailyProgress = typeof dailyProgress.$inferSelect;
 export type DbDailyProgressInsert = typeof dailyProgress.$inferInsert;
+export type DbUserVocab = typeof userVocabularies.$inferSelect;
+export type DbUserVocabInsert = typeof userVocabularies.$inferInsert;
+export type DbMissionDef = typeof dailyMissionDefs.$inferSelect;
+export type DbUserDailyMission = typeof userDailyMissions.$inferSelect;

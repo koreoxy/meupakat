@@ -1,6 +1,6 @@
 'use client';
-// src/app/dashboard/page.tsx — Main Dashboard
 
+import { useMemo } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
 import Link from 'next/link';
 import StreakCalendar from '@/components/features/StreakCalendar';
@@ -8,11 +8,39 @@ import ProgressBar from '@/components/ui/ProgressBar';
 import Card from '@/components/ui/Card';
 import { getLevelInfoByXp, getXpProgress, formatXp } from '@/lib/utils/xp';
 import { getTodayProgressPercent, getStreakBadge, formatDuration } from '@/lib/utils/streak';
-import { getScenariosByLevel } from '@/lib/scenarios';
+import { SCENARIOS } from '@/lib/scenarios';
 import { cn } from '@/lib/utils/cn';
+import { useTranslation, type Language } from '@/hooks/useTranslation';
+
+// Rekomendasi dinamis berdasarkan level user
+function getRecommendations(level: string) {
+  const byLevel = SCENARIOS.filter((s) => s.level === level);
+  const today = new Date();
+  const seed = today.getDate() + today.getMonth();
+  // Pick 2 different scenarios than the daily topic
+  const recs = byLevel.filter((_, i) => i !== seed % byLevel.length).slice(0, 2);
+  return recs.length >= 2 ? recs : byLevel.slice(0, 2);
+}
+
+const LEVEL_TIPS: Record<string, Record<Language, string>> = {
+  beginner: {
+    id: 'Latih sapaan sederhana dan percakapan sehari-hari untuk membangun rasa percaya diri.',
+    en: 'Practice simple greetings and daily life conversations to build confidence.',
+  },
+  intermediate: {
+    id: 'Coba skenario profesional untuk memperluas kosakata bahasa Inggris tempat kerja Anda.',
+    en: 'Try professional scenarios to expand your workplace English vocabulary.',
+  },
+  advanced: {
+    id: 'Tantang diri Anda dengan negosiasi bisnis dan diskusi akademik.',
+    en: 'Challenge yourself with business negotiations and academic discussions.',
+  },
+};
 
 export default function DashboardPage() {
   const { user, streak, todayProgress, weeklyProgress } = useAppStore();
+  const { t, language } = useTranslation();
+
   if (!user || !streak) return null;
 
   const levelInfo     = getLevelInfoByXp(user.currentXp);
@@ -23,7 +51,12 @@ export default function DashboardPage() {
   );
   const isMissionDone    = todayProgress?.isMissionCompleted ?? false;
   const streakBadge      = getStreakBadge(streak.currentStreak);
-  const suggestedScenarios = getScenariosByLevel(user.currentLevel).slice(0, 2);
+  const suggestedScenarios = SCENARIOS.filter((s) => s.level === user.currentLevel).slice(0, 2);
+  const recommendations  = useMemo(() => getRecommendations(user.currentLevel), [user.currentLevel]);
+
+  // Daily login reward: show if no activity today yet
+  const hasActivityToday = (todayProgress?.secondsSpoken ?? 0) > 0;
+  const dayOfStreak = streak.currentStreak;
 
   return (
     <div className="px-0 sm:px-6 lg:px-8 pt-6 pb-24 md:pb-8 space-y-4 animate-fade-in max-w-7xl mx-auto w-full">
@@ -32,7 +65,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mb-2 px-4 sm:px-0">
         <div>
           <p className="text-[12px] text-[var(--color-ink-muted)] font-medium uppercase tracking-[0.05em] mb-0.5">
-            Good day,
+            {language === 'id' ? 'Halo,' : 'Good day,'}
           </p>
           <h1 className="font-display-md text-[var(--color-ink)]">
             {user.fullName.split(' ')[0]} 👋
@@ -45,6 +78,38 @@ export default function DashboardPage() {
           {levelInfo.emoji}
         </div>
       </div>
+
+      {/* ── Daily Login Reward banner ──────────────── */}
+      {!hasActivityToday && (
+        <div
+          className="mx-4 sm:mx-0 p-4 rounded-[var(--radius-xl)] flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 animate-fade-in-down"
+          style={{
+            background: 'linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.05) 100%)',
+            border: '1px solid rgba(251,191,36,0.3)',
+          }}
+        >
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <span className="text-2xl shrink-0 mt-0.5">🎁</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-[var(--color-ink)]">
+                {language === 'id' ? 'Mulai latihan hari ini untuk mempertahankan streak Anda!' : 'Start today to keep your streak alive!'}
+              </p>
+              <p className="text-[11px] text-[var(--color-ink-muted)] mt-0.5">
+                {dayOfStreak > 0
+                  ? (language === 'id' ? `Anda memiliki streak ${dayOfStreak} hari 🔥 Jangan biarkan terputus!` : `You have a ${dayOfStreak}-day streak 🔥 Don't break it!`)
+                  : (language === 'id' ? 'Mulai sesi pertama Anda hari ini dan bangun streak baru.' : 'Start your first session today and begin your streak.')}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/practice"
+            className="px-4 py-2 rounded-[var(--radius-sm)] text-[12px] font-bold transition-all hover:opacity-90 active:scale-[0.97] shrink-0 w-full sm:w-auto text-center"
+            style={{ background: '#fbbf24', color: '#000' }}
+          >
+            {language === 'id' ? 'Mulai Latihan →' : 'Practice →'}
+          </Link>
+        </div>
+      )}
 
       {/* Two Column Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -62,7 +127,7 @@ export default function DashboardPage() {
                 </span>
                 <div>
                   <p className="font-display-md text-[var(--color-ink)] leading-none">{streak.currentStreak}</p>
-                  <p className="text-[12px] text-[var(--color-ink-muted)] mt-0.5">Day Streak</p>
+                  <p className="text-[12px] text-[var(--color-ink-muted)] mt-0.5">{language === 'id' ? 'Streak Hari' : 'Day Streak'}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -72,8 +137,8 @@ export default function DashboardPage() {
                   </span>
                 )}
                 <div className="text-right">
-                  <p className="text-[13px] font-bold text-[var(--color-ink)]">Best: {streak.longestStreak}</p>
-                  <p className="text-[11px] text-[var(--color-ink-muted)]">days</p>
+                  <p className="text-[13px] font-bold text-[var(--color-ink)]">{language === 'id' ? 'Terbaik' : 'Best'}: {streak.longestStreak}</p>
+                  <p className="text-[11px] text-[var(--color-ink-muted)]">{language === 'id' ? 'hari' : 'days'}</p>
                 </div>
               </div>
             </div>
@@ -87,7 +152,7 @@ export default function DashboardPage() {
           {/* ── Today's mission ─────────────────────────── */}
           <Card variant="feature">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">Today&apos;s Mission</h2>
+              <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">{language === 'id' ? 'Misi Hari Ini' : "Today's Mission"}</h2>
               <span
                 className={cn(
                   'text-[11px] font-semibold px-2.5 py-1 rounded-[var(--radius-full)]',
@@ -96,7 +161,7 @@ export default function DashboardPage() {
                     : 'bg-[var(--color-surface-active)] text-[var(--color-ink-muted)] border border-[var(--color-hairline)]'
                 )}
               >
-                {isMissionDone ? '✅ Done!' : `${formatDuration(todayProgress?.secondsSpoken ?? 0)} / ${user.dailyTargetMinutes}m`}
+                {isMissionDone ? (language === 'id' ? '✅ Selesai!' : '✅ Done!') : `${formatDuration(todayProgress?.secondsSpoken ?? 0)} / ${user.dailyTargetMinutes}m`}
               </span>
             </div>
             <ProgressBar
@@ -104,17 +169,59 @@ export default function DashboardPage() {
               variant={isMissionDone ? 'accent' : 'brand'}
               size="lg"
               showLabel
-              label={`${Math.round(todayPercent)}% of daily goal`}
+              label={`${Math.round(todayPercent)}% ` + (language === 'id' ? 'dari target harian' : 'of daily goal')}
             />
             {!isMissionDone && (
               <p className="text-[12px] text-[var(--color-ink-muted)] mt-2">
-                {formatDuration(Math.max(0, user.dailyTargetMinutes * 60 - (todayProgress?.secondsSpoken ?? 0)))} remaining today
+                {formatDuration(Math.max(0, user.dailyTargetMinutes * 60 - (todayProgress?.secondsSpoken ?? 0)))} {language === 'id' ? 'tersisa hari ini' : 'remaining today'}
               </p>
             )}
           </Card>
+
+          {/* ── Smart Recommendations ─────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">{language === 'id' ? '🧠 Direkomendasikan untuk Anda' : '🧠 Recommended for You'}</h2>
+                <p className="text-[11px] text-[var(--color-ink-muted)] mt-0.5">{LEVEL_TIPS[user.currentLevel]?.[language]}</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {recommendations.map((scenario, i) => (
+                <Link
+                  key={scenario.id}
+                  href={`/dashboard/mission/${scenario.id}`}
+                  id={`rec-card-${scenario.id}`}
+                  className={cn(
+                    'flex items-center gap-3 p-4',
+                    'bg-[var(--color-surface-card)] border-y sm:border border-[var(--color-hairline)] border-x-0 sm:border-x rounded-none sm:rounded-[var(--radius-lg)]',
+                    'hover:border-[var(--color-primary)] hover:ring-1 hover:ring-[var(--color-primary)]',
+                    'transition-all duration-200 active:scale-[0.98]',
+                    'animate-fade-in-up',
+                  )}
+                  style={{ animationDelay: `${i * 0.08}s` }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center text-base shrink-0"
+                    style={{ backgroundColor: `${levelInfo.color}18`, border: `1px solid ${levelInfo.color}30` }}
+                  >
+                    🎯
+                  </div>
+                  <div className="flex-1 min-w-0 px-2 sm:px-0">
+                    <p className="text-[14px] font-medium text-[var(--color-ink)] truncate">{scenario.title}</p>
+                    <p className="text-[12px] text-[var(--color-ink-muted)] truncate">{scenario.description}</p>
+                  </div>
+                  <div className="text-right shrink-0 px-2 sm:px-0">
+                    <p className="text-[12px] font-bold text-[var(--color-primary)]">+{scenario.xpReward} XP</p>
+                    <p className="text-[11px] text-[var(--color-ink-muted)]">{scenario.durationMinutes}m</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Right column: XP / Level & Quick Practice */}
+        {/* Right column: XP / Level & Quick Practice + Stats */}
         <div className="lg:col-span-5 space-y-4">
           {/* ── XP & Level ──────────────────────────────── */}
           <Card variant="feature">
@@ -136,16 +243,37 @@ export default function DashboardPage() {
               </div>
             </div>
             <p className="text-[12px] text-[var(--color-ink-muted)]">
-              {formatXp(levelInfo.xpNext - user.currentXp)} XP to next level
+              {formatXp(levelInfo.xpNext - user.currentXp)} {language === 'id' ? 'XP ke level berikutnya' : 'XP to next level'}
             </p>
+          </Card>
+
+          {/* ── Quick links ─────────────────────────────── */}
+          <Card variant="default" padding="sm">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { href: '/dashboard/stats',       icon: '📊', label: t('nav_stats'),    color: '#3a86ff' },
+                { href: '/dashboard/leaderboard',  icon: '🏆', label: t('nav_leaderboard'), color: '#fbbf24' },
+                { href: '/dashboard/vocabulary',   icon: '📚', label: t('nav_vocabulary'),  color: '#10b981' },
+                { href: '/dashboard/practice',     icon: '🎤', label: t('nav_practice'),    color: '#8b5cf6' },
+              ].map(({ href, icon, label, color }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="flex flex-col items-center gap-1.5 p-3 rounded-[var(--radius-md)] transition-all duration-200 hover:bg-[var(--color-surface-active)] active:scale-[0.97] text-center"
+                >
+                  <span className="text-2xl">{icon}</span>
+                  <span className="text-[11px] font-semibold text-[var(--color-ink-muted)]">{label}</span>
+                </Link>
+              ))}
+            </div>
           </Card>
 
           {/* ── Quick Practice ──────────────────────────── */}
           <div>
             <div className="flex items-center justify-between mb-3 px-4 sm:px-0">
-              <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">Quick Practice</h2>
+              <h2 className="text-[15px] font-semibold text-[var(--color-ink)]">{language === 'id' ? 'Latihan Cepat' : 'Quick Practice'}</h2>
               <Link href="/dashboard/practice" className="text-[12px] text-[var(--color-primary)] hover:underline font-medium">
-                See all →
+                {language === 'id' ? 'Lihat semua →' : 'See all →'}
               </Link>
             </div>
             <div className="space-y-2">

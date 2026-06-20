@@ -9,6 +9,7 @@ import { useAppStore } from '@/hooks/useAppStore';
 import { useToast } from '@/components/ui/Toast';
 import ConversationPlayer from '@/components/features/ConversationPlayer';
 import { getLevelInfoByXp } from '@/lib/utils/xp';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface PageProps {
   params: Promise<{ scenarioId: string }>;
@@ -19,6 +20,7 @@ export default function MissionPage({ params }: PageProps) {
   const router = useRouter();
   const { user, completeSession } = useAppStore();
   const { showToast } = useToast();
+  const { t, language } = useTranslation();
   const [isDone, setIsDone] = useState(false);
   const [result, setResult] = useState<{ xpGained: number; didLevelUp: boolean } | null>(null);
 
@@ -28,9 +30,11 @@ export default function MissionPage({ params }: PageProps) {
     return (
       <div className="min-h-full bg-[var(--color-canvas)] flex flex-col items-center justify-center px-4 py-16">
         <p className="text-5xl mb-4">😕</p>
-        <h2 className="text-[var(--color-ink)] font-semibold text-xl mb-2">Scenario not found</h2>
+        <h2 className="text-[var(--color-ink)] font-semibold text-xl mb-2">
+          {language === 'id' ? 'Skenario tidak ditemukan' : 'Scenario not found'}
+        </h2>
         <Link href="/dashboard/practice" className="text-[var(--color-primary)] text-sm hover:underline">
-          ← Back to Practice
+          {language === 'id' ? '← Kembali ke Latihan' : '← Back to Practice'}
         </Link>
       </div>
     );
@@ -43,9 +47,15 @@ export default function MissionPage({ params }: PageProps) {
       const res = await completeSession(secondsSpoken, aiPerformanceScore);
       setResult({ xpGained: res.xpGained, didLevelUp: res.didLevelUp });
       setIsDone(true);
-      showToast(`🎉 +${res.xpGained} XP earned! Great session!`, 'success', 4000);
+      showToast(
+        language === 'id'
+          ? `🎉 +${res.xpGained} XP didapatkan! Sesi yang luar biasa!`
+          : `🎉 +${res.xpGained} XP earned! Great session!`,
+        'success',
+        4000
+      );
     },
-    [completeSession, showToast]
+    [completeSession, showToast, language]
   );
 
   return (
@@ -61,10 +71,15 @@ export default function MissionPage({ params }: PageProps) {
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center animate-scale-in">
 
             <div className="text-6xl mb-5">🏆</div>
-            <h2 className="font-display-md text-[var(--color-ink)] mb-2">Session Complete!</h2>
+            <h2 className="font-display-md text-[var(--color-ink)] mb-2">
+              {language === 'id' ? 'Sesi Selesai!' : 'Session Complete!'}
+            </h2>
             <p className="text-[13px] text-[var(--color-ink-muted)] mb-8 leading-relaxed max-w-xs">
-              You finished <strong className="text-[var(--color-ink)]">{scenario.title}</strong>.{' '}
-              Keep it up!
+              {language === 'id' ? (
+                <>Anda menyelesaikan <strong className="text-[var(--color-ink)]">{scenario.title}</strong>. Terus tingkatkan!</>
+              ) : (
+                <>You finished <strong className="text-[var(--color-ink)]">{scenario.title}</strong>. Keep it up!</>
+              )}
             </p>
 
             {result && (
@@ -72,17 +87,23 @@ export default function MissionPage({ params }: PageProps) {
                 <div className="flex justify-around">
                   <div className="text-center">
                     <p className="text-2xl font-black text-[var(--color-primary)]">+{result.xpGained}</p>
-                    <p className="text-[11px] text-[var(--color-ink-muted)] mt-1 font-medium">XP Earned</p>
+                    <p className="text-[11px] text-[var(--color-ink-muted)] mt-1 font-medium">
+                      {language === 'id' ? 'XP Didapat' : 'XP Earned'}
+                    </p>
                   </div>
                   <div className="w-px bg-[var(--color-hairline)]" />
                   <div className="text-center">
                     <p className="text-2xl">🔥</p>
-                    <p className="text-[11px] text-[var(--color-ink-muted)] mt-1 font-medium">Streak Active</p>
+                    <p className="text-[11px] text-[var(--color-ink-muted)] mt-1 font-medium">
+                      {language === 'id' ? 'Streak Aktif' : 'Streak Active'}
+                    </p>
                   </div>
                   <div className="w-px bg-[var(--color-hairline)]" />
                   <div className="text-center">
                     <p className="text-2xl text-emerald-400">✓</p>
-                    <p className="text-[11px] text-[var(--color-ink-muted)] mt-1 font-medium">Mission Done</p>
+                    <p className="text-[11px] text-[var(--color-ink-muted)] mt-1 font-medium">
+                      {language === 'id' ? 'Misi Selesai' : 'Mission Done'}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -94,14 +115,14 @@ export default function MissionPage({ params }: PageProps) {
                 onClick={() => { setIsDone(false); setResult(null); }}
                 className="w-full h-11 rounded-[var(--radius-sm)] text-[14px] font-semibold text-[var(--color-on-primary)] bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] transition-colors active:scale-[0.98]"
               >
-                🔄 Practice Again
+                {language === 'id' ? '🔄 Latihan Lagi' : '🔄 Practice Again'}
               </button>
               <button
                 id="go-to-dashboard-btn"
                 onClick={() => router.push('/dashboard')}
                 className="w-full h-11 rounded-[var(--radius-sm)] text-[14px] font-medium text-[var(--color-ink-secondary)] bg-[var(--color-surface-card)] border border-[var(--color-hairline)] hover:border-[var(--color-ink-muted)] hover:text-[var(--color-ink)] transition-colors active:scale-[0.98]"
               >
-                Go to Dashboard
+                {language === 'id' ? 'Kembali ke Beranda' : 'Go to Dashboard'}
               </button>
             </div>
           </div>

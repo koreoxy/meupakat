@@ -5,7 +5,7 @@
 // TTS Strategy:
 //   Menggunakan Web Speech API (SpeechSynthesis) gratis berbasis browser secara langsung (tidak menggunakan OpenAI).
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface UseTTSReturn {
   speak: (text: string) => void;
@@ -32,6 +32,24 @@ export function useTTS(
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    const loadVoices = () => {
+      const allVoices = window.speechSynthesis.getVoices();
+      setVoices(allVoices);
+    };
+    loadVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
 
   // ─── OpenAI TTS via API Route ───────────────────────────────────────────────
 
@@ -112,36 +130,48 @@ export function useTTS(
       }
       window.speechSynthesis.cancel();
 
-      const utterance = new SpeechSynthesisUtterance(text);
+      const processedText = preprocessTextForSpeech(text);
+      const utterance = new SpeechSynthesisUtterance(processedText);
       utterance.lang = 'en-US';
-      utterance.rate = 0.9;
-      utterance.pitch = 1.0;
+      utterance.rate = 0.88; // Slightly more natural cadence and relaxed pace
+      utterance.pitch = 0.98; // Slightly lower pitch for more natural chest/vocal resonance
       utterance.volume = 1.0;
 
-      const voices = window.speechSynthesis.getVoices();
-      // Saring suara bahasa Inggris perempuan (seperti Samantha, Zira, Hazel, Victoria, atau mengandung 'female')
-      // dan hindari suara laki-laki (seperti Alex, David, Mark, George)
-      const preferredFemale = voices.find(
-        (v) =>
-          v.lang.startsWith('en') &&
-          (v.name.includes('Samantha') || 
-           v.name.includes('Zira') || 
-           v.name.includes('Hazel') ||
-           v.name.includes('Victoria') ||
-           v.name.toLowerCase().includes('female'))
-      ) ?? voices.find(
-        (v) => 
-          v.lang.startsWith('en') && 
-          !v.name.includes('David') && 
-          !v.name.includes('Alex') && 
-          !v.name.includes('Mark') &&
-          !v.name.includes('George')
-      );
-      if (preferredFemale) utterance.voice = preferredFemale;
+      const currentVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+      
+      // Filter for English voices only
+      const enVoices = currentVoices.filter((v) => v.lang.startsWith('en'));
+
+      // Sort/prioritize natural sounding voices:
+      // 1. Online natural voices (contains 'natural') - Edge has extremely premium natural voices
+      // 2. Google US English
+      // 3. Microsoft Aria Online
+      // 4. Any other google/microsoft cloud English voices
+      // 5. Premium offline female voices (Samantha, Hazel, Victoria)
+      // 6. Any other English female voice
+      const preferredVoice = 
+        enVoices.find((v) => v.name.toLowerCase().includes('natural')) ??
+        enVoices.find((v) => v.name.includes('Google US English')) ??
+        enVoices.find((v) => v.name.includes('Microsoft Aria Online')) ??
+        enVoices.find((v) => v.name.toLowerCase().includes('google')) ??
+        enVoices.find((v) => v.name.toLowerCase().includes('microsoft')) ??
+        enVoices.find((v) => 
+          v.name.includes('Samantha') || 
+          v.name.includes('Hazel') || 
+          v.name.includes('Victoria')
+        ) ??
+        enVoices.find((v) => v.name.toLowerCase().includes('female')) ??
+        enVoices.find((v) => v.name.includes('Zira')) ??
+        enVoices[0] ??
+        currentVoices[0];
+
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
 
       // Safety timeout: Chrome sometimes hangs and never fires onend
       // Estimasi: 1 karakter = ~80ms + 2000ms buffer
-      const timeoutMs = Math.max(3000, text.length * 80 + 2000);
+      const timeoutMs = Math.max(3000, processedText.length * 80 + 2000);
       let durationTimer: ReturnType<typeof setTimeout>;
       let startTimer: ReturnType<typeof setTimeout>;
 
@@ -184,21 +214,25 @@ export function useTTS(
       
       window.speechSynthesis.speak(utterance);
     },
-    [onStart, onEnd]
+    [onStart, onEnd, voices]
   );
 
   // ─── Main speak function ────────────────────────────────────────────────────
 
   const speak = useCallback(
-    (text: string) => {
+    async (text: string) => {
       // Stop apapun yang sedang berjalan
       audioRef.current?.pause();
       if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
 
-      // Langsung gunakan Web Speech API gratis berbasis browser
-      speakWithWebSpeech(text);
+      // Prioritas 1: OpenAI TTS (tts-1-hd) – suara paling natural
+      const success = await speakWithOpenAI(text);
+      // Prioritas 2: Web Speech API browser – fallback jika API tidak tersedia
+      if (!success) {
+        speakWithWebSpeech(text);
+      }
     },
-    [speakWithWebSpeech]
+    [speakWithOpenAI, speakWithWebSpeech]
   );
 
   const stop = useCallback(() => {
@@ -314,4 +348,41 @@ export function useSTT(onResult?: (transcript: string) => void): UseSTTReturn {
   }, []);
 
   return { startRecording, stopRecording, isRecording, transcript, error };
+}
+
+/**
+ * Preprocesses text to add natural pauses (commas, periods) before speaking.
+ */
+function preprocessTextForSpeech(text: string): string {
+  if (!text) return '';
+  
+  let processed = text;
+  
+  // 1. Add commas after common conversational starter words/phrases if not present
+  const conversationalStarters = [
+    'well', 'actually', 'basically', 'honestly', 'seriously', 
+    'by the way', 'anyway', 'anyhow', 'first of all', 'sure', 
+    'okay', 'ok', 'oh', 'yes', 'no', 'of course'
+  ];
+  
+  conversationalStarters.forEach(phrase => {
+    const regex = new RegExp(`(^|[.!?]\\s+)(${phrase})(\\s+)(?![.,!?;])`, 'gi');
+    processed = processed.replace(regex, (match, prefix, p, space) => {
+      const capitalized = p.charAt(0).toUpperCase() + p.slice(1);
+      const isStartOfSentence = prefix.trim().length > 0 || match.startsWith(p);
+      const replacement = isStartOfSentence ? capitalized : p.toLowerCase();
+      return `${prefix}${replacement},${space}`;
+    });
+  });
+
+  // 2. Add comma before coordinating conjunctions in long sentences to force a breathing pause
+  processed = processed.replace(/(\s+)(but|however|although|though|whereas)(\s+)(?![.,!?;])/gi, ', $2$3');
+
+  // 3. Normalize ellipsis to a period and space for proper pause duration
+  processed = processed.replace(/\.\.\./g, '... ');
+
+  // 4. Ensure space after punctuation for natural phrasing
+  processed = processed.replace(/([.,!?;])([A-Za-z])/g, '$1 $2');
+
+  return processed;
 }

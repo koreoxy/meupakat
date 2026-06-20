@@ -4,6 +4,7 @@ import './globals.css';
 import { AppProvider } from '@/hooks/useAppStore';
 import { ToastProvider } from '@/components/ui/Toast';
 import { ThemeProvider } from '@/hooks/useTheme';
+import { LanguageProvider } from '@/hooks/useTranslation';
 import RegisterSW from '@/components/RegisterSW';
 
 export const metadata: Metadata = {
@@ -45,8 +46,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ToastProvider>
           <ThemeProvider>
             <AppProvider>
-              <RegisterSW />
-              {children}
+              <LanguageProvider>
+                <RegisterSW />
+                {children}
+              </LanguageProvider>
             </AppProvider>
           </ThemeProvider>
         </ToastProvider>

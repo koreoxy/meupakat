@@ -327,3 +327,19 @@ function mapDbProgress(row: {
     isMissionCompleted: row.isMissionCompleted,
   };
 }
+
+// ─── Get All Progress ─────────────────────────────────────────────────────────
+
+export async function getAllProgress(): Promise<DailyProgress[]> {
+  const authUser = await getCurrentAuthUser();
+  if (!authUser) return [];
+
+  const results = await db
+    .select()
+    .from(dailyProgress)
+    .where(eq(dailyProgress.userId, authUser.id))
+    .orderBy(dailyProgress.date);
+
+  return results.map(mapDbProgress);
+}
+

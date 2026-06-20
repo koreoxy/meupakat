@@ -12,6 +12,8 @@ import { useToast } from '@/components/ui/Toast';
 import PushToTalkButton from './PushToTalkButton';
 import VoiceWaveform from './VoiceWaveform';
 import Button from '@/components/ui/Button';
+import WordTooltip from './WordTooltip';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface ConversationPlayerProps {
   scenario: Scenario;
@@ -30,6 +32,7 @@ const MAX_USER_TURNS = 5;
 
 export default function ConversationPlayer({ scenario, onComplete, onCancel }: ConversationPlayerProps) {
   const { showToast } = useToast();
+  const { t, language } = useTranslation();
 
   const [messages,       setMessages]       = useState<ChatMessage[]>([]);
   const [dynamicHistory, setDynamicHistory] = useState<DynamicChatMessage[]>([]);
@@ -46,6 +49,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
   const [evaluationResult, setEvaluationResult] = useState<{ grammarScore: number; vocabularyScore: number; feedback: string } | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -90,9 +94,9 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
           setMessages((prev) => prev.filter((m) => m.id !== msgId));
 
           // Play audio notification (TTS)
-          tts.speak("System rate limit reached. Please wait a moment.");
+          tts.speak(language === 'id' ? "Batas limit sistem tercapai. Harap tunggu sebentar." : "System rate limit reached. Please wait a moment.");
 
-          showToast("Model sedang dalam batasan limit. Harap tunggu sebentar.", "warning", 5000);
+          showToast(language === 'id' ? "Model sedang dalam batasan limit. Harap tunggu sebentar." : "Model rate limit reached. Please wait a moment.", "warning", 5000);
           return;
         }
 
@@ -108,12 +112,12 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
         tts.speak(data.reply);
       } catch {
         setMessages((prev) => prev.filter((m) => m.id !== msgId));
-        showToast('Gagal terhubung ke AI. Silakan coba bicara lagi.', 'error');
+        showToast(language === 'id' ? 'Gagal terhubung ke AI. Silakan coba bicara lagi.' : 'Failed to connect to AI. Please try speaking again.', 'error');
         setIsWaitingForAI(false);
         setIsUserTurn(true);
       }
     },
-    [dynamicHistory, scenario, showToast] // Removed timer/tts to resolve circular dependencies (will be referenced inside callback body at runtime)
+    [dynamicHistory, scenario, showToast, language] // Removed timer/tts to resolve circular dependencies (will be referenced inside callback body at runtime)
   );
 
   const stt = useSTT(handleSTTResult);
@@ -133,7 +137,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
   const targetSeconds = scenario.durationMinutes * 60;
   const timer = useSmartTimer({
     targetSeconds,
-    onComplete: () => showToast('🎉 Daily target reached! Great job!', 'success', 5000),
+    onComplete: () => showToast(language === 'id' ? '🎉 Target harian tercapai! Kerja bagus!' : '🎉 Daily target reached! Great job!', 'success', 5000),
     isSilent,
   });
 
@@ -217,19 +221,19 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
       setEvaluationResult({
         grammarScore: data.grammarScore ?? 10,
         vocabularyScore: data.vocabularyScore ?? 10,
-        feedback: data.feedback || 'Sesi selesai dengan baik! Teruskan latihanmu.',
+        feedback: data.feedback || (language === 'id' ? 'Sesi selesai dengan baik! Teruskan latihanmu.' : 'Session completed successfully! Keep practicing.'),
       });
     } catch (err) {
       console.error('Error evaluating session:', err);
       setEvaluationResult({
         grammarScore: 10,
         vocabularyScore: 10,
-        feedback: 'Sesi latihan selesai dengan baik! Teruskan latihan untuk hasil maksimal.',
+        feedback: language === 'id' ? 'Sesi latihan selesai dengan baik! Teruskan latihan untuk hasil maksimal.' : 'Session practice completed successfully! Keep practicing for maximum results.',
       });
     } finally {
       setIsEvaluating(false);
     }
-  }, [tts, timer, stt, dynamicHistory]);
+  }, [tts, timer, stt, dynamicHistory, language]);
 
   const handleSubmitResults = useCallback(() => {
     if (isSubmitting) return;
@@ -276,12 +280,23 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-[var(--color-canvas)] relative">
+      {/* Word Tooltip / Dictionary Modal */}
+      {selectedWord && (
+        <WordTooltip
+          word={selectedWord}
+          onClose={() => setSelectedWord(null)}
+        />
+      )}
       {/* Evaluating Overlay */}
       {isEvaluating && (
         <div className="absolute inset-0 z-50 bg-[var(--color-scrim)] backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
           <div className="w-12 h-12 rounded-full border-4 border-[var(--color-primary)] border-t-transparent animate-spin mb-4" />
-          <h3 className="text-lg font-semibold text-[var(--color-ink)]">AI Evaluator sedang menilai...</h3>
-          <p className="text-[13px] text-[var(--color-ink-muted)] mt-1">Menganalisis tata bahasa dan pilihan kata Anda.</p>
+          <h3 className="text-lg font-semibold text-[var(--color-ink)]">
+            {language === 'id' ? 'AI Evaluator sedang menilai...' : 'AI Evaluator is evaluating...'}
+          </h3>
+          <p className="text-[13px] text-[var(--color-ink-muted)] mt-1">
+            {language === 'id' ? 'Menganalisis tata bahasa dan pilihan kata Anda.' : 'Analyzing your grammar and word choices.'}
+          </p>
         </div>
       )}
 
@@ -291,15 +306,21 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
           <div className="w-full max-w-md bg-[var(--color-surface-card)] border border-[var(--color-hairline)] rounded-[var(--radius-xl)] p-6 shadow-2xl animate-scale-in">
             <div className="text-center mb-6">
               <span className="text-4xl">📊</span>
-              <h3 className="text-xl font-bold text-[var(--color-ink)] mt-2">Hasil Evaluasi AI</h3>
-              <p className="text-[12px] text-[var(--color-ink-muted)] mt-0.5">Sesi latihan berbicara Anda</p>
+              <h3 className="text-xl font-bold text-[var(--color-ink)] mt-2">
+                {language === 'id' ? 'Hasil Evaluasi AI' : 'AI Evaluation Results'}
+              </h3>
+              <p className="text-[12px] text-[var(--color-ink-muted)] mt-0.5">
+                {language === 'id' ? 'Sesi latihan berbicara Anda' : 'Your speaking practice session'}
+              </p>
             </div>
 
             <div className="space-y-4 mb-6">
               {/* Grammar Score */}
               <div>
                 <div className="flex justify-between text-[13px] font-semibold mb-1">
-                  <span className="text-[var(--color-ink-secondary)]">Tata Bahasa (Grammar)</span>
+                  <span className="text-[var(--color-ink-secondary)]">
+                    {language === 'id' ? 'Tata Bahasa (Grammar)' : 'Grammar'}
+                  </span>
                   <span className="text-[var(--color-ink)]">{evaluationResult.grammarScore} / 15</span>
                 </div>
                 <div className="h-2 rounded-full bg-[var(--color-surface-active)] overflow-hidden">
@@ -313,7 +334,9 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
               {/* Vocabulary Score */}
               <div>
                 <div className="flex justify-between text-[13px] font-semibold mb-1">
-                  <span className="text-[var(--color-ink-secondary)]">Kosakata (Vocabulary)</span>
+                  <span className="text-[var(--color-ink-secondary)]">
+                    {language === 'id' ? 'Kosakata (Vocabulary)' : 'Vocabulary'}
+                  </span>
                   <span className="text-[var(--color-ink)]">{evaluationResult.vocabularyScore} / 15</span>
                 </div>
                 <div className="h-2 rounded-full bg-[var(--color-surface-active)] overflow-hidden">
@@ -326,19 +349,23 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
 
               {/* Total Bonus */}
               <div className="p-3 bg-[var(--color-surface-active)] rounded-[var(--radius-md)] flex items-center justify-between">
-                <span className="text-[12px] font-medium text-[var(--color-ink-secondary)]">Skor Bonus XP AI:</span>
+                <span className="text-[12px] font-medium text-[var(--color-ink-secondary)]">
+                  {language === 'id' ? 'Skor Bonus XP AI:' : 'AI XP Bonus Score:'}
+                </span>
                 <span className="text-sm font-bold text-[var(--color-primary)]">+{evaluationResult.grammarScore + evaluationResult.vocabularyScore} XP</span>
               </div>
 
               {/* Feedback */}
               <div className="p-4 bg-[var(--color-chat-hint-bg)] border border-[var(--color-chat-hint-border)] rounded-[var(--radius-md)]">
-                <p className="text-[12px] font-semibold text-[var(--color-warning)] mb-1">💡 Umpan Balik AI:</p>
+                <p className="text-[12px] font-semibold text-[var(--color-warning)] mb-1">
+                  {language === 'id' ? '💡 Umpan Balik AI:' : '💡 AI Feedback:'}
+                </p>
                 <p className="text-[12px] leading-relaxed text-[var(--color-ink-secondary)] italic font-medium">"{evaluationResult.feedback}"</p>
               </div>
             </div>
 
             <Button variant="primary" size="lg" fullWidth onClick={handleSubmitResults} isLoading={isSubmitting}>
-              Kirim & Selesaikan Sesi
+              {language === 'id' ? 'Kirim & Selesaikan Sesi' : 'Submit & Complete Session'}
             </Button>
           </div>
         </div>
@@ -349,16 +376,20 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
         <div className="absolute inset-0 z-50 bg-[var(--color-scrim)] backdrop-blur-sm flex items-center justify-center p-6 text-center">
           <div className="w-full max-w-sm bg-[var(--color-surface-modal)] border border-[var(--color-hairline)] rounded-[var(--radius-xl)] p-6 shadow-2xl animate-scale-in">
             <span className="text-4xl">⚠️</span>
-            <h3 className="text-lg font-bold text-[var(--color-ink)] mt-3">Akhiri Sesi?</h3>
+            <h3 className="text-lg font-bold text-[var(--color-ink)] mt-3">
+              {language === 'id' ? 'Akhiri Sesi?' : 'End Session?'}
+            </h3>
             <p className="text-[13px] text-[var(--color-ink-muted)] mt-2">
-              Apakah Anda yakin ingin mengakhiri sesi lebih awal? Anda tidak akan mendapatkan XP reward jika keluar sekarang.
+              {language === 'id'
+                ? 'Apakah Anda yakin ingin mengakhiri sesi lebih awal? Anda tidak akan mendapatkan XP reward jika keluar sekarang.'
+                : 'Are you sure you want to end the session early? You won\'t earn any XP reward if you exit now.'}
             </p>
             <div className="flex gap-3 mt-6">
               <Button variant="secondary" size="md" fullWidth onClick={() => setShowCancelConfirm(false)}>
-                Batal
+                {language === 'id' ? 'Batal' : 'Cancel'}
               </Button>
               <Button variant="danger" size="md" fullWidth onClick={handleConfirmCancel}>
-                Akhiri
+                {language === 'id' ? 'Akhiri' : 'End'}
               </Button>
             </div>
           </div>
@@ -378,27 +409,27 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
               {isRateLimited ? (
                 <p className="text-[11px] text-red-400 flex items-center gap-1 font-bold animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                  Sistem Sibuk ({rateLimitCountdown}s)
+                  {language === 'id' ? `Sistem Sibuk (${rateLimitCountdown}s)` : `System Busy (${rateLimitCountdown}s)`}
                 </p>
               ) : stt.isRecording ? (
                 <p className="text-[11px] text-red-400 flex items-center gap-1 font-bold animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                  Anda Berbicara...
+                  {language === 'id' ? 'Anda Berbicara...' : 'You are Speaking...'}
                 </p>
               ) : tts.isSpeaking ? (
                 <p className="text-[11px] text-emerald-400 flex items-center gap-1 font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  AI Berbicara...
+                  {language === 'id' ? 'AI Berbicara...' : 'AI is Speaking...'}
                 </p>
               ) : isWaitingForAI ? (
                 <p className="text-[11px] text-amber-400 flex items-center gap-1 font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  AI Berpikir...
+                  {language === 'id' ? 'AI Berpikir...' : 'AI is Thinking...'}
                 </p>
               ) : (
                 <p className="text-[11px] text-slate-400 flex items-center gap-1 font-semibold">
                   <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
-                  Menunggu
+                  {language === 'id' ? 'Menunggu' : 'Waiting'}
                 </p>
               )}
             </div>
@@ -426,10 +457,10 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
               <div className="bg-[#1f2c34] p-5 rounded-xl border border-slate-700 max-w-xs mx-auto">
                 <p className="text-[15px] font-bold text-white mb-2">{scenario.title}</p>
                 <p className="text-[12px] text-slate-300 mb-4">
-                  Tekan mulai untuk memulai latihan percakapan bahasa Inggris Anda.
+                  {language === 'id' ? 'Tekan mulai untuk memulai latihan percakapan bahasa Inggris Anda.' : 'Press start to begin your English conversation practice.'}
                 </p>
                 <Button variant="primary" size="md" fullWidth onClick={handleStart} id="start-session-btn-mobile">
-                  🚀 Mulai Sesi
+                  {language === 'id' ? '🚀 Mulai Sesi' : '🚀 Start Session'}
                 </Button>
               </div>
             </div>
@@ -489,10 +520,10 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                   <div className="px-3 py-2 rounded-lg text-[13.5px] leading-relaxed max-w-[85%] bg-[#005c4b]/80 text-white rounded-tr-none shadow-sm flex flex-col gap-1.5 border border-emerald-500/20">
                     <div className="flex items-center gap-1.5 text-[9px] text-emerald-300 font-bold uppercase tracking-wider">
                       <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                      Mendengarkan...
+                      {language === 'id' ? 'Mendengarkan...' : 'Listening...'}
                     </div>
                     <span className="italic">
-                      {stt.transcript || 'Mulai berbicara sekarang...'}
+                      {stt.transcript || (language === 'id' ? 'Mulai berbicara sekarang...' : 'Start speaking now...')}
                     </span>
                   </div>
                 </div>
@@ -502,7 +533,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                 <div className="flex justify-start">
                   <div className="bg-[#202c33] px-3 py-2 rounded-lg rounded-tl-none text-[13.5px] text-slate-300 shadow-sm flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-pulse" />
-                    <span className="italic">AI mengetik…</span>
+                    <span className="italic">{language === 'id' ? 'AI mengetik…' : 'AI is typing...'}</span>
                   </div>
                 </div>
               )}
@@ -516,7 +547,9 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
         {hasStarted && currentHint && (
           <div className="shrink-0 bg-[#1f2c34] border-t border-slate-700 p-2.5 px-4 space-y-1.5">
             <div className="text-[12px] text-slate-300 bg-[#2a3942]/60 px-3 py-1.5 rounded border border-yellow-500/20">
-              <span className="font-bold text-yellow-500">💡 Petunjuk: </span>
+              <span className="font-bold text-yellow-500">
+                {language === 'id' ? '💡 Petunjuk: ' : '💡 Hint: '}
+              </span>
               {currentHint}
             </div>
           </div>
@@ -530,7 +563,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
               <button
                 onClick={handleSkipVoice}
                 className="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center transition-all shrink-0 animate-bounce shadow-md"
-                title="Lewati Suara AI"
+                title={language === 'id' ? "Lewati Suara AI" : "Skip AI Voice"}
               >
                 <span className="text-sm">🔊</span>
               </button>
@@ -551,15 +584,25 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
 
             <div className="flex-1 bg-[#2a3942] rounded-full px-4 py-2 text-[13px] text-slate-300 truncate">
               {isRateLimited ? (
-                <span className="text-red-400 font-medium animate-pulse">⚠️ Model limit! Tunggu {rateLimitCountdown} detik...</span>
+                <span className="text-red-400 font-medium animate-pulse">
+                  {language === 'id' ? `⚠️ Model limit! Tunggu ${rateLimitCountdown} detik...` : `⚠️ Model limit! Wait ${rateLimitCountdown}s...`}
+                </span>
               ) : stt.isRecording ? (
-                <span className="text-emerald-400 animate-pulse font-medium">Sedang merekam suara Anda...</span>
+                <span className="text-emerald-400 animate-pulse font-medium">
+                  {language === 'id' ? 'Sedang merekam suara Anda...' : 'Recording your voice...'}
+                </span>
               ) : tts.isSpeaking ? (
-                <span className="text-emerald-400 font-medium">AI sedang berbicara...</span>
+                <span className="text-emerald-400 font-medium">
+                  {language === 'id' ? 'AI sedang berbicara...' : 'AI is speaking...'}
+                </span>
               ) : isWaitingForAI ? (
-                <span className="text-amber-400 font-medium">Menyusun tanggapan...</span>
+                <span className="text-amber-400 font-medium">
+                  {language === 'id' ? 'Menyusun tanggapan...' : 'Composing response...'}
+                </span>
               ) : (
-                <span className="opacity-60">Tekan tombol mic di samping untuk bicara...</span>
+                <span className="opacity-60">
+                  {language === 'id' ? 'Tekan tombol mic di samping untuk bicara...' : 'Press the mic button next to this to speak...'}
+                </span>
               )}
             </div>
 
@@ -601,7 +644,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                 {scenario.title}
               </p>
               <p className="text-[11px] text-[var(--color-ink-muted)] leading-tight">
-                {scenario.durationMinutes}min · {scenario.level}
+                {scenario.durationMinutes}m · {scenario.level}
               </p>
             </div>
           </div>
@@ -627,11 +670,11 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
             <button
               id="end-session-btn"
               onClick={handleEndSessionClick}
-              title="End session"
+              title={language === 'id' ? 'Akhiri sesi' : 'End session'}
               className="flex items-center gap-1.5 h-9 px-3 rounded-[var(--radius-sm)] bg-[var(--color-error)] hover:opacity-90 text-white text-[12px] font-semibold transition-opacity"
             >
               <EndCallIcon className="w-3.5 h-3.5" />
-              <span>End</span>
+              <span>{language === 'id' ? 'Akhiri' : 'End'}</span>
             </button>
           </div>
         </div>
@@ -689,11 +732,11 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse"
                     style={{ backgroundColor: isRateLimited ? '#ef4444' : isWaitingForAI ? '#f59e0b' : tts.isSpeaking ? '#3a86ff' : isUserTurn ? '#10b981' : '#6b7280' }}
                   />
-                  {isRateLimited ? `System Busy (${rateLimitCountdown}s)`
-                    : isWaitingForAI ? 'AI Thinking…'
-                    : tts.isSpeaking ? 'AI Speaking'
-                    : isUserTurn ? 'Your Turn'
-                    : 'Waiting'}
+                  {isRateLimited ? (language === 'id' ? `Sistem Sibuk (${rateLimitCountdown}s)` : `System Busy (${rateLimitCountdown}s)`)
+                    : isWaitingForAI ? (language === 'id' ? 'AI Berpikir...' : 'AI Thinking…')
+                    : tts.isSpeaking ? (language === 'id' ? 'AI Berbicara' : 'AI Speaking')
+                    : isUserTurn ? (language === 'id' ? 'Giliran Anda' : 'Your Turn')
+                    : (language === 'id' ? 'Menunggu' : 'Waiting')}
                 </div>
               </div>
 
@@ -723,7 +766,7 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                 />
               ) : (
                 <Button variant="primary" size="lg" onClick={handleStart} id="start-session-btn">
-                  🚀 Start Session
+                  {language === 'id' ? '🚀 Mulai Sesi' : '🚀 Start Session'}
                 </Button>
               )}
 
@@ -736,12 +779,12 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
             <div className="flex-1 flex flex-col p-4 overflow-hidden max-h-[190px] lg:max-h-none shrink-0 lg:shrink">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-[12px] font-semibold text-[var(--color-ink-secondary)] uppercase tracking-[0.06em]">
-                  Live Transcript
+                  {language === 'id' ? 'Transkrip Langsung' : 'Live Transcript'}
                 </h3>
                 {stt.isRecording && (
                   <span className="flex items-center gap-1.5 text-[11px] font-bold text-red-400">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                    Recording
+                    {language === 'id' ? 'Merekam' : 'Recording'}
                   </span>
                 )}
               </div>
@@ -756,11 +799,13 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
               >
                 {isRateLimited ? (
                   <span className="text-red-500 font-medium">
-                    ⚠️ System is rate-limited. Retrying is paused. Please wait {rateLimitCountdown} seconds...
+                    {language === 'id' ? `⚠️ Sistem sedang dalam limit. Mengulang ditunda. Silakan tunggu ${rateLimitCountdown} detik...` : `⚠️ System is rate-limited. Retrying is paused. Please wait ${rateLimitCountdown} seconds...`}
                   </span>
                 ) : stt.transcript ? stt.transcript : (
                   <span className="text-[var(--color-ink-muted)] italic font-normal">
-                    {isUserTurn ? 'Click the mic button to speak…' : 'Waiting for your turn…'}
+                    {isUserTurn
+                      ? (language === 'id' ? 'Klik tombol mikrofon untuk berbicara...' : 'Click the mic button to speak…')
+                      : (language === 'id' ? 'Menunggu giliran Anda...' : 'Waiting for your turn…')}
                   </span>
                 )}
               </div>
@@ -774,7 +819,9 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                     color: 'var(--color-ink)',
                   }}
                 >
-                  <span className="font-semibold text-[var(--color-warning)]">💡 Hint: </span>
+                  <span className="font-semibold text-[var(--color-warning)]">
+                    {language === 'id' ? '💡 Petunjuk: ' : '💡 Hint: '}
+                  </span>
                   {currentHint}
                 </div>
               )}
@@ -786,12 +833,18 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
             {/* Chat header */}
             <div className="shrink-0 px-4 py-3 border-b border-[var(--color-hairline)] flex items-center justify-between bg-[var(--color-surface-card)]">
               <div>
-                <h3 className="text-[13px] font-semibold text-[var(--color-ink)]">Conversation</h3>
-                <p className="text-[11px] text-[var(--color-ink-muted)]">AI-powered chat</p>
+                <h3 className="text-[13px] font-semibold text-[var(--color-ink)]">
+                  {language === 'id' ? 'Percakapan' : 'Conversation'}
+                </h3>
+                <p className="text-[11px] text-[var(--color-ink-muted)]">
+                  {language === 'id' ? 'Obrolan bertenaga AI' : 'AI-powered chat'}
+                </p>
               </div>
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-full)] bg-[var(--color-surface-active)] border border-[var(--color-hairline)]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
-                <span className="text-[11px] font-semibold text-[var(--color-ink-secondary)]">Online</span>
+                <span className="text-[11px] font-semibold text-[var(--color-ink-secondary)]">
+                  {language === 'id' ? 'Aktif' : 'Online'}
+                </span>
               </div>
             </div>
 
@@ -801,9 +854,11 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                 <div className="h-full flex flex-col items-center justify-center text-center gap-4 py-8">
                   <div className="text-4xl">🎙️</div>
                   <div>
-                    <p className="text-[15px] font-semibold text-[var(--color-ink)] mb-1">Ready to Practice?</p>
+                    <p className="text-[15px] font-semibold text-[var(--color-ink)] mb-1">
+                      {language === 'id' ? 'Siap untuk Latihan?' : 'Ready to Practice?'}
+                    </p>
                     <p className="text-[12px] text-[var(--color-ink-muted)] max-w-[200px]">
-                      Press Start to begin your AI conversation session.
+                      {language === 'id' ? 'Tekan Mulai untuk memulai sesi percakapan AI Anda.' : 'Press Start to begin your AI conversation session.'}
                     </p>
                   </div>
                 </div>
@@ -854,6 +909,20 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                             />
                           ))}
                         </div>
+                      ) : msg.speaker === 'ai' ? (
+                        // AI messages: words are clickable for dictionary lookup
+                        <span>
+                          {msg.text.split(/\s+/).map((word, wi) => (
+                            <span
+                              key={wi}
+                              onClick={() => setSelectedWord(word)}
+                              className="cursor-pointer hover:underline hover:opacity-80 transition-opacity"
+                              title={language === 'id' ? `Cari arti "${word.replace(/[^a-zA-Z'-]/g, '')}"` : `Look up "${word.replace(/[^a-zA-Z'-]/g, '')}"`}
+                            >
+                              {word}{' '}
+                            </span>
+                          ))}
+                        </span>
                       ) : (
                         <span>{msg.text}</span>
                       )}
@@ -888,7 +957,9 @@ export default function ConversationPlayer({ scenario, onComplete, onCancel }: C
                       color: 'var(--color-chat-ai-text)',
                     }}
                   >
-                    <span className="italic text-[var(--color-ink-muted)]">Typing…</span>
+                    <span className="italic text-[var(--color-ink-muted)]">
+                      {language === 'id' ? 'Mengetik...' : 'Typing…'}
+                    </span>
                   </div>
                 </div>
               )}
